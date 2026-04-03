@@ -4,12 +4,28 @@ from sqlalchemy import create_engine, inspect
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import NullPool, StaticPool
 import os
+from pathlib import Path
 
-# Database configuration
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "sqlite:///./ai_crm.db"
-)
+# 1. Get the absolute path to the backend directory (two folders up from connection.py)
+# Assuming: backend/database/connection.py
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+# 2. Define the absolute path to the database file
+DEFAULT_BACKEND_DB_PATH = BASE_DIR / 'ai_crm.db'
+
+# 3. Fetch from .env
+env_db_url = os.getenv("DATABASE_URL")
+
+# 4. Bulletproof path resolution
+if env_db_url:
+    DATABASE_URL = env_db_url
+else:
+    # SQLAlchemy requires a specific prefix for absolute SQLite paths based on the OS
+    # Windows needs 3 slashes (sqlite:///C:/...) and Unix needs 4 (sqlite:////usr/...)
+    if os.name == 'nt':  # Windows
+        DATABASE_URL = f"sqlite:///{DEFAULT_BACKEND_DB_PATH}"
+    else:  # Linux/Mac
+        DATABASE_URL = f"sqlite:////{DEFAULT_BACKEND_DB_PATH}"
 
 # Create engine with appropriate pool settings
 if "sqlite" in DATABASE_URL.lower():

@@ -4,8 +4,13 @@ from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any
+from pydantic import BaseModel
 import uvicorn
 from dotenv import load_dotenv
+
+
+class QueryRequest(BaseModel):
+    prompt: str
 
 # Load environment variables from .env file
 load_dotenv()
@@ -163,6 +168,74 @@ async def generate_dashboard(
     """Trigger Analytics Agent - synchronous"""
     dashboard = await orchestrator.generate_dashboard(category, db)
     return dashboard
+
+
+@app.post("/api/query")
+async def query_data(request: QueryRequest, db: Session = Depends(get_db)):
+    """Unified query endpoint consumed by frontend."""
+
+    # Use analytics agent to generate dashboard context for natural language queries.
+    try:
+        dashboard = await orchestrator.generate_dashboard("all", db)
+    except Exception as e:
+        import traceback
+        tb = traceback.format_exc()
+        print("[ERROR] Exception in /api/query:\n", tb)
+        # Return a helpful error response in development
+        raise HTTPException(status_code=500, detail={"error": "internal_server_error", "message": str(e)})
+
+    # Build simple metric table from kpis + metrics
+    raw_items = []
+    if isinstance(dashboard.get("kpis"), dict):
+        for key, value in dashboard["kpis"].items():
+            if isinstance(value, (int, float)):
+                raw_items.append({"metric": key, "value": float(value)})
+
+    if isinstance(dashboard.get("metrics"), dict):
+        for key, value in dashboard["metrics"].items():
+            if isinstance(value, (int, float)):
+                raw_items.append({"metric": key, "value": float(value)})
+
+    # Fallback for no numeric metrics
+    if not raw_items:
+        raw_items = [{"metric": "empty", "value": 0}]
+
+    # Build chart config for frontend display
+    charts = [
+        {
+            "type": "bar",
+            "xAxis": "metric",
+            "yAxis": "value",
+            "title": "Top CRM Metrics",
+            "description": "Bar chart showing key metric values for current dashboard query."
+        }
+    ]
+
+    suggested = [
+        "Revenue by region",
+        "Total sales over time",
+        "Number of employees by department",
+        "Which products sell best?"
+    ]
+
+    summary_text = (dashboard.get("insights") and len(dashboard.get("insights")) and str(dashboard.get("insights")[0])) or "AI dashboard insights are ready."
+
+    return {
+        "status": "success",
+        "data": raw_items,
+        "dashboard_config": {
+            "charts": charts,
+            "suggested_queries": suggested
+        },
+        "summary_text": summary_text,
+        "metadata": {
+            "row_count": len(raw_items),
+            "columns": ["metric", "value"],
+            "pii_columns_redacted": [],
+            "sql_used": "", 
+            "execution_time_ms": 0
+        }
+    }
 
 
 # ============================================================================
