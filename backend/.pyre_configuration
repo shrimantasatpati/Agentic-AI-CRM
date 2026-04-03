@@ -1,0 +1,15 @@
+{
+  "site_package_search_strategy": "all",
+  "source_directories": [
+    {"root": "."},
+    {"root": "agents"},
+    {"root": "api"},
+    {"root": "database"},
+    {"root": "workflows"},
+    {"root": "scripts"}
+  ],
+  "exclude": [
+    ".venv",
+    "**/__pycache__"
+  ]
+}
