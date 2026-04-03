@@ -22,7 +22,7 @@ venv
 *.log
 
 # Database
-*.db
+# *.db
 *.sqlite3
 
 # OS
