@@ -38,3 +38,7 @@ htmlcov/
 build/
 dist/
 *.egg-info/
+
+# Node modules
+node_modules/
+npm-debug.log

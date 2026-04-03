@@ -100,15 +100,6 @@ def main() -> None:
     print("\n" + "="*60)
     print("  ✅ Setup Complete!")
     print("="*60)
-    print(f"""
-  Next steps:
-    1. Run the backend API server:
-         cd backend
-         python -m uvicorn main:app --reload
-    2. Start the React Frontend:
-         cd frontend
-         npm run dev
-""")
 
 if __name__ == "__main__":
     main()
