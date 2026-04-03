@@ -321,7 +321,7 @@ class AgentOrchestrator:
         """
         steps = []
         prompt_lower = prompt.lower()
-        steps.append("🔍 Analyzing user query and extracting intent...")
+        steps.append("🔍 Agent 1: Identifying user intent and extracting entities...")
         
         # 1. Intent Classification
         routing_prompt = f"""
@@ -339,11 +339,11 @@ class AgentOrchestrator:
         try:
             category = await self.llm.generate(routing_prompt)
             category = category.strip().lower()
-            steps.append(f"🎯 Intent identified as: {category.upper()}")
+            steps.append(f"🎯 Intent identified as: {category.upper()}. Dispatching appropriate CRM Agent.")
         except Exception as e:
             print(f"ERROR: Intent classification failed: {e}")
             category = "analytics" # Default to analytics on failure
-            steps.append("⚠️ Intent classification ambiguous, defaulting to Analytics.")
+            steps.append("⚠️ Intent classification ambiguous, defaulting to Analytics Agent.")
         
         # 2. Route to appropriate agent
         try:
@@ -423,12 +423,12 @@ class AgentOrchestrator:
                     }]
                 else:
                     leads = db.query(Contact).order_by(Contact.lead_score.desc()).limit(10).all()
-                    data = [{"id": l.id, "email": l.email, "score": l.lead_score, "status": l.lead_status} for l in leads]
+                    data = [{"id": l.id, "email": l.email, "lead_score": l.lead_score, "lead_status": l.lead_status} for l in leads]
                     summary = f"Here are your highest-scoring leads that need attention."
                     charts = [{
                         "type": "bar", 
                         "xAxis": "email", 
-                        "yAxis": "score", 
+                        "yAxis": "lead_score", 
                         "title": "Lead Priority Index",
                         "description": "Top prospects sorted by qualification probability."
                     }]
@@ -439,12 +439,12 @@ class AgentOrchestrator:
                 steps.append("🤝 Success Agent engaged: Auditing customer relationship health...")
                 from database.models import Customer
                 customers = db.query(Customer).order_by(Customer.health_score.asc()).limit(5).all()
-                data = [{"id": c.id, "name": c.name, "health": c.health_score, "risk": c.churn_risk} for c in customers]
+                data = [{"id": c.id, "name": c.name, "health_score": c.health_score, "churn_risk": c.churn_risk} for c in customers]
                 summary = f"I've identified {len(customers)} accounts showing churn signals. High priority intervention recommended."
                 charts = [{
                     "type": "area", 
                     "xAxis": "name", 
-                    "yAxis": "health", 
+                    "yAxis": "health_score", 
                     "title": "Customer Loyalty Trend",
                     "description": "Monitoring account health across high-risk sectors."
                 }]
@@ -464,7 +464,51 @@ class AgentOrchestrator:
                     "title": "System Vitality KPI",
                     "description": "Live health signals from across the AI CRM landscape."
                 }]
+            
+            # --- AGENTIC SQL RETRY ENGINE (Helper) ---
+            async def execute_sql_with_retry(query_prompt, db, max_tries=3):
+                steps.append(f"🤖 Agent 2: Initializing SQL Agent for precise data extraction (Max Tries: {max_tries})...")
+                current_try = 1
+                last_error = None
+                sql = ""
+
+                while current_try <= max_tries:
+                    try:
+                        steps.append(f"🛠️ Agent 2: Generating and validating SQL (Try {current_try})...")
+                        # Generate SQL
+                        gen_prompt = f"""
+                        Given the CRM database schema (Deals: id, name, value, stage, health_score; Leads: id, email, first_name, lead_score, lead_status; Customers: id, name, health_score, churn_risk),
+                        Generate a valid SQLite query for: "{query_prompt}"
+                        {f"Previous error: {last_error}. Please correct the SQL." if last_error else ""}
+                        Return ONLY the SQL string.
+                        """
+                        sql = await self.llm.generate(gen_prompt)
+                        sql = sql.replace("```sql", "").replace("```", "").strip()
+                        
+                        # Execute SQL
+                        steps.append(f"🚀 Agent 2: Executing Query: {sql[:40]}...")
+                        from sqlalchemy import text
+                        res = db.execute(text(sql)).fetchall()
+                        steps.append(f"✅ Agent 2: Query successful. {len(res)} rows retrieved.")
+                        return sql, [dict(r._mapping) for r in res]
+                    except Exception as e:
+                        last_error = str(e)
+                        steps.append(f"❌ Agent 2: SQL Attempt {current_try} failed: {last_error[:30]}...")
+                        current_try += 1
+                
+                steps.append("🛑 Agent 2: SQL Agent failed after 3 tries. Falling back to default records.")
+                return sql, data # Fallback to whatever 'data' already has
+
+            # If the user specifically asked for a custom view, trigger the SQL Agent
+            if "custom" in prompt_lower or any(word in prompt_lower for word in ["list", "find", "search", "show"]):
+                sql_final, custom_data = await execute_sql_with_retry(prompt, db)
+                if custom_data:
+                    data = custom_data
+                    sql = sql_final
+                    steps.append("🎨 Agent 3: Visualizer Agent processing specialized dataset...")
+
             # 4. Generate Data-Aware Summary
+            steps.append("🧩 Agent 4: Reasoning Agent synthesizing final narrative response...")
             summary_prompt = f"""
             Summarize the following CRM data for the user in a professional, concise, and helpful tone.
             Data: {data[:10]} (showing first 10 records)
@@ -472,11 +516,12 @@ class AgentOrchestrator:
             
             Return ONLY the summary text (max 2 sentences).
             """
+            summary = ""
             try:
                 summary = await self.llm.generate(summary_prompt)
                 summary = summary.strip()
             except:
-                pass # Use the existing summary as fallback
+                summary = "I've processed your request. See the updated dashboard below."
 
             return {
                 "status": "success",

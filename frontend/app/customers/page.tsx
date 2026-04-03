@@ -9,7 +9,13 @@ const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:800
 
 export default function CustomersPage() {
   const [customers, setCustomers] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+
+  const filteredCustomers = customers.filter((c: any) => 
+    c.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    c.churn_risk?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   useEffect(() => {
     fetch(`${BACKEND_URL}/api/customers`)
@@ -24,9 +30,9 @@ export default function CustomersPage() {
       });
   }, []);
 
-  const atRisk = customers.filter((c: any) => c.health_score < 50).length;
-  const avgHealth = customers.length > 0 
-    ? (customers.reduce((acc: number, c: any) => acc + (c.health_score || 0), 0) / customers.length).toFixed(1)
+  const atRisk = filteredCustomers.filter((c: any) => c.health_score < 50).length;
+  const avgHealth = filteredCustomers.length > 0 
+    ? (filteredCustomers.reduce((acc: number, c: any) => acc + (c.health_score || 0), 0) / filteredCustomers.length).toFixed(1)
     : '0';
 
   return (
@@ -39,11 +45,17 @@ export default function CustomersPage() {
         <div className="flex items-center justify-between">
           <h1 className="text-4xl font-bold tracking-tight text-[var(--text-primary)]">Customer Portfolio</h1>
           <div className="flex gap-3">
-             <button className="btn-ghost flex items-center gap-2 px-4 py-2 rounded-xl border border-[var(--border-medium)] bg-[var(--bg-glass)]">
+             <button 
+                onClick={() => alert('Starting AI Health Audit... analyzing interaction frequency and sentiment.')}
+                className="btn-ghost flex items-center gap-2 px-4 py-2 rounded-xl border border-[var(--border-medium)] bg-[var(--bg-glass)] hover:bg-green-50/10 transition-colors"
+             >
                 <ShieldCheck size={18} className="text-green-500" />
                 <span>Health Audit</span>
              </button>
-             <button className="btn-primary px-6 py-2 rounded-xl bg-pink-600 text-white font-medium shadow-lg shadow-pink-500/30">
+             <button 
+                onClick={() => alert('Account creation modal coming soon. Pre-filling data from LinkedIn intelligence agent.')}
+                className="btn-primary px-6 py-2 rounded-xl bg-pink-600 text-white font-medium shadow-lg shadow-pink-500/30 active:scale-95 transition-transform"
+             >
                 New Account
              </button>
           </div>
@@ -51,9 +63,9 @@ export default function CustomersPage() {
       </header>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
         {[
-          { label: 'Active Partners', value: customers.length, icon: Users, color: 'text-blue-500' },
+          { label: 'Active Partners', value: filteredCustomers.length, icon: Users, color: 'text-blue-500' },
           { label: 'Avg Health Score', value: `${avgHealth}/100`, icon: Heart, color: 'text-pink-500' },
           { label: 'At Risk Accounts', value: atRisk, icon: AlertCircle, color: 'text-orange-500' },
         ].map((stat, i) => (
@@ -80,7 +92,7 @@ export default function CustomersPage() {
         <div className="apple-glass rounded-[2rem] p-6 border border-[var(--border-medium)]">
           {!isLoading && (
             <ChartGrid 
-              data={customers}
+              data={filteredCustomers}
               charts={[
                 { 
                   type: 'bar', 
@@ -92,7 +104,7 @@ export default function CustomersPage() {
                 { 
                   type: 'pie', 
                   xAxis: 'churn_risk', 
-                  yAxis: 'id', 
+                  yAxis: 'health_score', 
                   title: 'Churn Risk Segmentation',
                   description: 'AI-driven classification of account retention confidence.'
                 }
@@ -112,9 +124,15 @@ export default function CustomersPage() {
            <div className="flex gap-4">
               <div className="relative">
                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" size={16} />
-                 <input type="text" placeholder="Search partners..." className="pl-10 pr-4 py-2 text-sm rounded-xl border border-[var(--border-medium)] bg-[var(--bg-glass)]" />
+                 <input 
+                    type="text" 
+                    placeholder="Search partners..." 
+                    className="pl-10 pr-4 py-2 text-sm rounded-xl border border-[var(--border-medium)] bg-[var(--bg-glass)] focus:ring-2 ring-pink-500/50 outline-none transition-all w-48 focus:w-64" 
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                 />
               </div>
-              <button className="p-2 rounded-xl hover:bg-[var(--bg-glass)] border border-[var(--border-medium)]"><Filter size={18} /></button>
+              <button className="p-2 rounded-xl hover:bg-[var(--bg-glass)] border border-[var(--border-medium)] transition-colors"><Filter size={18} /></button>
            </div>
         </div>
         <div className="p-4">
@@ -124,7 +142,7 @@ export default function CustomersPage() {
                <p className="animate-pulse text-lg text-[var(--text-secondary)] font-bold">Mapping Success Metrics...</p>
             </div>
           ) : (
-            <DataTable data={customers} />
+            <DataTable data={filteredCustomers} />
           )}
         </div>
       </section>

@@ -62,42 +62,41 @@ export default function BarChartWidget({ config, data }: Props) {
   }));
 
   return (
-    <div className="apple-card fade-in-up" style={{ padding: '16px' }}>
+    <div className="apple-card fade-in-up" style={{ padding: '24px', minHeight: '380px', display: 'flex', flexDirection: 'column' }}>
       <h3 style={{ color: 'var(--text-primary)', fontWeight: 600, marginBottom: 4, fontSize: '0.95rem' }}>{config.title}</h3>
-      <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginBottom: 16, lineHeight: 1.4, whiteSpace: 'normal', overflowWrap: 'break-word', paddingRight: '8px' }}>{config.description}</p>
-      <ResponsiveContainer width="100%" height={240}>
-        <BarChart data={barData} margin={{ top: 10, right: 20, left: 10, bottom: 65 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid-stroke)" vertical={false} />
-          <XAxis
-            dataKey="name"
-            stroke="var(--chart-axis-text)"
-            tick={{ fontSize: 11, fill: 'var(--chart-axis-text)' }}
-            axisLine={false}
-            tickLine={false}
-            angle={-45}
-            textAnchor="end"
-            height={50}
-          />
-          <YAxis
-            stroke="var(--chart-axis-text)"
-            tick={{ fontSize: 11, fill: 'var(--chart-axis-text)' }}
-            axisLine={false}
-            tickLine={false}
-            tickFormatter={(value) => typeof value === 'number' && value >= 1000 ? `${(value / 1000).toFixed(1)}k` : value}
-          />
-          <Legend 
-            layout="vertical" 
-            verticalAlign="middle" 
-            align="right" 
-            wrapperStyle={{ color: 'var(--text-secondary)', fontSize: '0.8rem', paddingLeft: '10px' }} 
-          />
-          <Bar dataKey={config.yAxis} radius={[4, 4, 0, 0]}>
-            {data.map((_, index) => (
-              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} fillOpacity={0.85} />
-            ))}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
+      <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginBottom: 20, lineHeight: 1.4, opacity: 0.8 }}>{config.description}</p>
+      
+      <div style={{ flex: 1, width: '100%', minHeight: '260px' }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={barData} margin={{ top: 10, right: 10, left: -20, bottom: 60 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid-stroke)" vertical={false} />
+            <XAxis
+              dataKey="name"
+              stroke="var(--chart-axis-text)"
+              tick={{ fontSize: 10, fill: 'var(--chart-axis-text)' }}
+              axisLine={false}
+              tickLine={false}
+              angle={-45}
+              textAnchor="end"
+              height={70}
+              interval={0}
+            />
+            <YAxis
+              stroke="var(--chart-axis-text)"
+              tick={{ fontSize: 10, fill: 'var(--chart-axis-text)' }}
+              axisLine={false}
+              tickLine={false}
+              tickFormatter={(value) => typeof value === 'number' && value >= 1000 ? `${(value / 1000).toFixed(1)}k` : value}
+            />
+            <Tooltip content={<CustomTooltip />} cursor={{ fill: 'var(--bg-glass-hover)', opacity: 0.4 }} />
+            <Bar dataKey="value" radius={[6, 6, 0, 0]} barSize={32}>
+              {barData.map((_, index) => (
+                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} fillOpacity={0.8} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }

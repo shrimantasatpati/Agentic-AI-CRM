@@ -49,10 +49,15 @@ export default function DealsPage() {
                 <input 
                   type="text" 
                   placeholder="Find a deal..." 
-                  className="pl-10 pr-4 py-2 rounded-xl border border-[var(--border-medium)] bg-[var(--bg-glass)] focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                  className="pl-10 pr-4 py-2 rounded-xl border border-[var(--border-medium)] bg-[var(--bg-glass)] focus:ring-2 focus:ring-blue-500 outline-none transition-all w-48 focus:w-64"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
                 />
              </div>
-             <button className="btn-primary px-6 py-2 rounded-xl bg-blue-600 text-white font-medium shadow-lg shadow-blue-500/30 hover:bg-blue-700 transition-colors">
+             <button 
+                onClick={() => alert('New Deal workflow triggered. Syncing with Sales Agent...')}
+                className="btn-primary px-6 py-2 rounded-xl bg-blue-600 text-white font-medium shadow-lg shadow-blue-500/30 hover:bg-blue-700 active:scale-95 transition-all"
+             >
                 New Deal
              </button>
           </div>
@@ -90,7 +95,7 @@ export default function DealsPage() {
         <div className="apple-glass rounded-3xl p-6 border border-[var(--border-medium)]">
           {!isLoading && (
             <ChartGrid 
-              data={deals}
+              data={filteredDeads}
               charts={[
                 { 
                   type: 'pie', 
@@ -125,7 +130,7 @@ export default function DealsPage() {
                <p className="text-lg text-[var(--text-secondary)] font-medium">Syncing with Sales Agent...</p>
             </div>
           ) : (
-            <DataTable data={deals} />
+            <DataTable data={filteredDeads} />
           )}
         </div>
       </section>

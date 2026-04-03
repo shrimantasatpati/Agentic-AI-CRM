@@ -65,37 +65,49 @@ export default function PieChartWidget({ config, data }: Props) {
   }));
 
   return (
-    <div className="apple-card fade-in-up" style={{ padding: '16px' }}>
+    <div className="apple-card fade-in-up" style={{ padding: '24px', minHeight: '380px', display: 'flex', flexDirection: 'column' }}>
       <h3 style={{ color: 'var(--text-primary)', fontWeight: 600, marginBottom: 4, fontSize: '0.95rem' }}>{config.title}</h3>
-      <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginBottom: 16, lineHeight: 1.4, whiteSpace: 'normal', overflowWrap: 'break-word', paddingRight: '8px' }}>{config.description}</p>
-      <ResponsiveContainer width="100%" height={240}>
-        <PieChart margin={{ top: 10, right: 10, left: 10, bottom: 20 }}>
-          <Pie
-            data={pieData}
-            cx="50%"
-            cy="50%"
-            innerRadius={45}
-            outerRadius={70}
-            paddingAngle={2}
-            dataKey="value"
-            label={renderCustomLabel}
-            labelLine={false}
-          >
-            {pieData.map((_, index) => (
-              <Cell
-                key={`cell-${index}`}
-                fill={COLORS[index % COLORS.length]}
-              />
-            ))}
-          </Pie>
-          <Legend 
-            layout="vertical" 
-            verticalAlign="middle" 
-            align="right" 
-            wrapperStyle={{ color: 'var(--text-secondary)', fontSize: '0.75rem', paddingLeft: '10px' }} 
-          />
-        </PieChart>
-      </ResponsiveContainer>
+      <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginBottom: 20, lineHeight: 1.4, opacity: 0.8 }}>{config.description}</p>
+      
+      <div style={{ flex: 1, width: '100%', minHeight: '260px' }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart margin={{ top: 10, right: 10, left: 10, bottom: 60 }}>
+            <Pie
+              data={pieData}
+              cx="50%"
+              cy="45%"
+              innerRadius={55}
+              outerRadius={75}
+              paddingAngle={4}
+              dataKey="value"
+              label={renderCustomLabel}
+              labelLine={false}
+            >
+              {pieData.map((_, index) => (
+                <Cell
+                  key={`cell-${index}`}
+                  fill={COLORS[index % COLORS.length]}
+                  stroke="none"
+                />
+              ))}
+            </Pie>
+            <Tooltip content={<CustomTooltip />} />
+            <Legend 
+              verticalAlign="bottom" 
+              align="center"
+              iconType="circle"
+              iconSize={8}
+              wrapperStyle={{ 
+                paddingTop: '20px',
+                fontSize: '11px',
+                color: 'var(--text-secondary)',
+                fontWeight: 500,
+                bottom: 0
+              }} 
+            />
+          </PieChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }
