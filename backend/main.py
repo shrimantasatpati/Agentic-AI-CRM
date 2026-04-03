@@ -11,12 +11,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from database.models import Base, Contact, Deal, Customer, Email, Meeting
-from database.connection import engine, get_db
+from database.connection import engine, get_db, init_db_tables
 from api import leads, deals, customers, emails, meetings, analytics
 from workflows.orchestrator import AgentOrchestrator
 
-# Create database tables
-Base.metadata.create_all(bind=engine)
+# Initialize database tables (only creates if they don't exist)
+init_db_tables(Base)
 
 # Initialize FastAPI app
 app = FastAPI(
