@@ -175,14 +175,7 @@ async def query_data(request: QueryRequest, db: Session = Depends(get_db)):
     """Unified query endpoint consumed by frontend."""
 
     # Use analytics agent to generate dashboard context for natural language queries.
-    try:
-        dashboard = await orchestrator.generate_dashboard("all", db)
-    except Exception as e:
-        import traceback
-        tb = traceback.format_exc()
-        print("[ERROR] Exception in /api/query:\n", tb)
-        # Return a helpful error response in development
-        raise HTTPException(status_code=500, detail={"error": "internal_server_error", "message": str(e)})
+    dashboard = await orchestrator.generate_dashboard("all", db)
 
     # Build simple metric table from kpis + metrics
     raw_items = []

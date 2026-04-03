@@ -98,7 +98,7 @@ def seed_all():
         company_objs = []
         for c in COMPANIES:
             company = Company(
-                id=uuid.uuid4(),
+                id=str(uuid.uuid4()),
                 name=c["name"],
                 domain=c["domain"],
                 industry=c["industry"],
@@ -120,7 +120,7 @@ def seed_all():
             first  = random.choice(FIRST_NAMES)
             last   = random.choice(LAST_NAMES)
             contact = Contact(
-                id=uuid.uuid4(),
+                id=str(uuid.uuid4()),
                 company_id=company.id,
                 email=f"{first.lower()}.{last.lower()}{i}@{company.domain}",
                 first_name=first,
@@ -147,7 +147,7 @@ def seed_all():
             stage   = random.choice(DEAL_STAGES)
             value   = random.choice([5000, 10000, 25000, 50000, 75000, 100000, 250000])
             deal = Deal(
-                id=uuid.uuid4(),
+                id=str(uuid.uuid4()),
                 company_id=contact.company_id,
                 contact_id=contact.id,
                 name=f"Deal - {contact.company_id} Q{random.randint(1,4)} {random.randint(2024,2026)}",
@@ -176,7 +176,7 @@ def seed_all():
             start = rand_past_date(500).date()
             csat: float = int(random.uniform(3.0, 5.0) * 10) / 10.0
             cust  = Customer(
-                id=uuid.uuid4(),
+                id=str(uuid.uuid4()),
                 company_id=company.id,
                 plan=plan,
                 mrr=mrr,
@@ -214,7 +214,7 @@ def seed_all():
             body_txt = random.choice(EMAIL_BODIES)
             direction = random.choice(["inbound", "outbound"])
             email = Email(
-                id=uuid.uuid4(),
+                id=str(uuid.uuid4()),
                 contact_id=contact.id,
                 from_email=contact.email if direction == "inbound" else f"rep{i}@yourcompany.com",
                 to_email=f"rep{i}@yourcompany.com" if direction == "inbound" else contact.email,
@@ -243,7 +243,7 @@ def seed_all():
             status    = "completed" if sched_at < datetime.utcnow() else "scheduled"
             attendees = [f"rep{random.randint(1,5)}@yourcompany.com", random.choice(contact_objs).email]
             meeting = Meeting(
-                id=uuid.uuid4(),
+                id=str(uuid.uuid4()),
                 deal_id=deal.id,
                 title=f"{mt.replace('_', ' ').title()} - {random.choice(COMPANIES)['name']}",
                 meeting_type=mt,
@@ -270,7 +270,7 @@ def seed_all():
             deal    = random.choice(deal_objs)
             atype   = random.choice(activity_types)
             activity = Activity(
-                id=uuid.uuid4(),
+                id=str(uuid.uuid4()),
                 contact_id=contact.id,
                 deal_id=deal.id,
                 activity_type=atype,
@@ -293,7 +293,7 @@ def seed_all():
         for i in range(50):
             agent_name = random.choice(agent_names)
             db.add(AgentLog(
-                id=uuid.uuid4(),
+                id=str(uuid.uuid4()),
                 agent_name=agent_name,
                 activity_type=random.choice(agent_events_types),
                 details={"status": "success", "processing_time_ms": random.randint(200, 3000)},
@@ -305,7 +305,7 @@ def seed_all():
             source = random.choice(agent_names)
             target = random.choice([a for a in agent_names if a != source])
             db.add(AgentEvent(
-                id=uuid.uuid4(),
+                id=str(uuid.uuid4()),
                 event_type=random.choice(["task_request", "lead_qualified", "deal_at_risk", "churn_risk_detected"]),
                 source_agent=source,
                 target_agent=target,
@@ -321,7 +321,7 @@ def seed_all():
             mrr_base    = 45000 + day_offset * 200
             avg_csat: float = int(random.uniform(3.5, 4.8) * 10) / 10.0
             db.add(MetricsDaily(
-                id=uuid.uuid4(),
+                id=str(uuid.uuid4()),
                 metric_date=metric_date,
                 leads_total=random.randint(8, 20),
                 leads_qualified=random.randint(3, 10),
