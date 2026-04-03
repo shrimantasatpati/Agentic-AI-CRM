@@ -4,7 +4,6 @@ from sqlalchemy import (
     Column, String, Integer, Float, Boolean, DateTime, Date,
     Text, ForeignKey, CheckConstraint, JSON
 )
-from sqlalchemy import UUID
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -16,7 +15,7 @@ Base = declarative_base()
 class Company(Base):
     __tablename__ = 'companies'
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     name = Column(String(255), nullable=False)
     domain = Column(String(255), unique=True)
     industry = Column(String(100))
@@ -38,8 +37,8 @@ class Company(Base):
 class Contact(Base):
     __tablename__ = 'contacts'
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    company_id = Column(UUID(as_uuid=True), ForeignKey('companies.id'))
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    company_id = Column(String(36), ForeignKey('companies.id'))
     email = Column(String(255), unique=True, nullable=False)
     first_name = Column(String(100))
     last_name = Column(String(100))
@@ -76,9 +75,9 @@ class Contact(Base):
 class Deal(Base):
     __tablename__ = 'deals'
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    company_id = Column(UUID(as_uuid=True), ForeignKey('companies.id'))
-    contact_id = Column(UUID(as_uuid=True), ForeignKey('contacts.id'))
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    company_id = Column(String(36), ForeignKey('companies.id'))
+    contact_id = Column(String(36), ForeignKey('contacts.id'))
 
     # Deal Information
     name = Column(String(255), nullable=False)
@@ -99,7 +98,7 @@ class Deal(Base):
     actual_close_date = Column(Date)
 
     # Assignment
-    owner_id = Column(UUID(as_uuid=True))
+    owner_id = Column(String(36))
 
     # Additional
     notes = Column(Text)
@@ -120,8 +119,8 @@ class Deal(Base):
 class Customer(Base):
     __tablename__ = 'customers'
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    company_id = Column(UUID(as_uuid=True), ForeignKey('companies.id'))
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    company_id = Column(String(36), ForeignKey('companies.id'))
 
     # Subscription
     plan = Column(String(100))
@@ -171,8 +170,8 @@ class Customer(Base):
 class Email(Base):
     __tablename__ = 'emails'
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    contact_id = Column(UUID(as_uuid=True), ForeignKey('contacts.id'))
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    contact_id = Column(String(36), ForeignKey('contacts.id'))
 
     # Email Data
     from_email = Column(String(255))
@@ -206,8 +205,8 @@ class Email(Base):
 class Meeting(Base):
     __tablename__ = 'meetings'
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    deal_id = Column(UUID(as_uuid=True), ForeignKey('deals.id'))
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    deal_id = Column(String(36), ForeignKey('deals.id'))
 
     # Meeting Info
     title = Column(String(255), nullable=False)
@@ -245,9 +244,9 @@ class Meeting(Base):
 class Activity(Base):
     __tablename__ = 'activities'
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    contact_id = Column(UUID(as_uuid=True), ForeignKey('contacts.id'))
-    deal_id = Column(UUID(as_uuid=True), ForeignKey('deals.id'))
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    contact_id = Column(String(36), ForeignKey('contacts.id'))
+    deal_id = Column(String(36), ForeignKey('deals.id'))
 
     # Activity Info
     activity_type = Column(String(100))
@@ -256,7 +255,7 @@ class Activity(Base):
     outcome = Column(String(100))
 
     # Assignment
-    assigned_to = Column(UUID(as_uuid=True))
+    assigned_to = Column(String(36))
     completed = Column(Boolean, default=False)
 
     # Dates
@@ -274,7 +273,7 @@ class Activity(Base):
 class AgentLog(Base):
     __tablename__ = 'agent_logs'
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     agent_name = Column(String(100), nullable=False)
     activity_type = Column(String(100))
     details = Column(JSON)
@@ -284,7 +283,7 @@ class AgentLog(Base):
 class AgentEvent(Base):
     __tablename__ = 'agent_events'
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     event_type = Column(String(100), nullable=False)
     source_agent = Column(String(100))
     target_agent = Column(String(100))
@@ -296,7 +295,7 @@ class AgentEvent(Base):
 class MetricsDaily(Base):
     __tablename__ = 'metrics_daily'
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     metric_date = Column(Date, nullable=False, unique=True)
 
     # Sales Metrics
