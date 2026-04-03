@@ -6,6 +6,7 @@ import DataTable from '@/components/DataTable';
 import ChartGrid from '@/components/ChartGrid';
 import { useTheme } from '@/components/ThemeProvider';
 import { QueryResponse, ChatMessage, Thread } from '@/types/dashboard';
+import WorkflowSteps from '@/components/WorkflowSteps';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -69,22 +70,6 @@ function MiniSQLPanel({ sql }: { sql: string }) {
 }
 
 // ── Agent Workflow Steps Component ─────────────────────────────────────────────
-function WorkflowSteps({ steps }: { steps: string[] }) {
-  if (!steps || steps.length === 0) return null;
-  return (
-    <div style={{ marginBottom: '16px', padding: '12px 16px', background: 'var(--bg-glass)', border: '1px solid var(--border-medium)', borderRadius: '16px', fontSize: '0.85rem' }}>
-       <div style={{ color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.7rem', textTransform: 'uppercase', marginBottom: '8px', letterSpacing: '0.05em' }}>Agent Orchestration Workflow</div>
-       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          {steps.map((step, i) => (
-             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)', animation: `fade-in 0.3s ease forwards ${i * 0.1}s` }}>
-                <div style={{ width: '4px', height: '4px', background: 'var(--accent-primary)', borderRadius: '50%' }}></div>
-                {step}
-             </div>
-          ))}
-       </div>
-    </div>
-  );
-}
 
 // ── Main Layout with Sidebar + Chat Flow ───────────────────────────────────────
 export default function DashboardPage() {
@@ -312,11 +297,13 @@ export default function DashboardPage() {
                       )}
                       {/* New Workflow Steps Visualization */}
                       {msg.queryResponse?.workflow_steps && (
-                        <WorkflowSteps steps={msg.queryResponse.workflow_steps} />
+                        <div style={{ marginBottom: '8px' }}>
+                          <WorkflowSteps steps={msg.queryResponse.workflow_steps} />
+                        </div>
                       )}
 
-                      {/* Content Summary */}
-                      {msg.content && (
+                      {/* Content Summary (Only if no summary_text in response yet) */}
+                      {!msg.queryResponse?.summary_text && (
                         <div style={{ marginBottom: '16px' }}>{msg.content}</div>
                       )}
                       {msg.queryResponse?.dashboard_config?.charts && msg.queryResponse.dashboard_config.charts.length > 0 && (

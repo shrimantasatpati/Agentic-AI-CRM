@@ -1,12 +1,9 @@
-"""Agent Orchestrator - Coordinates all AI agents"""
-
-from typing import Dict, Any, cast, Callable
+from typing import Dict, Any, cast, Callable, Optional
 from sqlalchemy.orm import Session
 import asyncio
 import os
 import threading
-from google import genai
-from google.genai import types
+from openai import AsyncOpenAI
 
 from agents import (
     LeadQualificationAgent,
@@ -14,44 +11,40 @@ from agents import (
     SalesPipelineAgent,
     CustomerSuccessAgent,
     MeetingSchedulerAgent,
-    AnalyticsAgent
+    AnalyticsAgent,
+    AskCRMAgent
 )
 
 
-class GeminiLLMWrapper:
+class GrokLLMWrapper:
     def __init__(self) -> None:
-        api_key = os.getenv("GEMINI_API_KEY")
-        self.model_name: str = os.getenv("GEMINI_MODEL_NAME", "gemini-2.5-flash")
-        # Use Any to avoid Pyre2 NoneType confusion
-        self._client: Any = None
+        api_key = os.getenv("XAI_API_KEY")
+        self.model_name: str = os.getenv("XAI_MODEL_NAME", "grok-2-1212")
+        self.base_url: str = os.getenv("XAI_BASE_URL", "https://api.x.ai/v1")
+        self._client: Optional[AsyncOpenAI] = None
+        
         if not api_key:
-            print("WARNING: GEMINI_API_KEY is not set in environment.")
+            print("WARNING: XAI_API_KEY is not set in environment.")
             return
 
-        self._client = genai.Client(api_key=api_key)
+        self._client = AsyncOpenAI(
+            api_key=api_key,
+            base_url=self.base_url
+        )
 
     async def generate(self, prompt: str) -> str:
         if self._client is None:
-            return "Mock Gemini response (missing configuration)"
+            return "Mock Grok response (missing configuration)"
 
-        client: Any = self._client  # narrow type for Pyre2
-        model: str = self.model_name
-
-        def call_gemini() -> Any:
-            return client.models.generate_content(
-                model=model,
-                contents=prompt
-            )
-
-        from typing import Callable
-        typed_fn = cast(Callable[..., Any], call_gemini)
-        
         try:
-            response: Any = await asyncio.to_thread(typed_fn)
-            return str(response.text)
+            response = await self._client.chat.completions.create(
+                model=self.model_name,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            return response.choices[0].message.content or ""
         except Exception as e:
-            print(f"ERROR: Gemini API call failed: {e}")
-            return f"Error: Could not reach AI service. (Details: {str(e)})"
+            print(f"ERROR: xAI API call failed: {e}")
+            return f"Error: Could not reach Grok. (Details: {str(e)})"
 
 
 class AgentOrchestrator:
@@ -78,12 +71,13 @@ class AgentOrchestrator:
             "sales_pipeline": self.sales_agent,
             "customer_success": self.success_agent,
             "meeting_scheduler": self.meeting_agent,
-            "analytics": self.analytics_agent
+            "analytics": self.analytics_agent,
+            "ask_crm": AskCRMAgent(llm=self.llm)
         }
 
     def _init_llm(self):
-        """Initialize LLM client using Gemini"""
-        return GeminiLLMWrapper()
+        """Initialize LLM client using Grok"""
+        return GrokLLMWrapper()
 
     def get_agent_status(self) -> Dict[str, str]:
         """Get status of all agents"""
@@ -104,9 +98,13 @@ class AgentOrchestrator:
         """
 
         # Step 1: Qualify lead
+        steps = ["🔍 Agent 1: Identifying lead intent and extracting business criteria..."]
         qualification_result = await self.lead_agent.execute({
-            "lead_data": lead_data
+            "lead_data": lead_data,
+            "db": db
         })
+        steps.append("🧲 Agent 1: Lead Qualification successful. Scoring lead quality...")
+        steps.append(f"✅ Lead Score: {qualification_result.get('score', 0)}/100")
 
         # Save to database
         from database.models import Contact
@@ -124,6 +122,7 @@ class AgentOrchestrator:
 
         # Step 2: Draft welcome email (if high score)
         if qualification_result.get("score", 0) >= 70:
+            steps.append("📧 Agent 2: High Score detected! Drafting personalized welcome sequence...")
             email_task = {
                 "email_data": {
                     "from": lead_data.get("email"),
@@ -132,16 +131,20 @@ class AgentOrchestrator:
                 }
             }
             await self.email_agent.execute(email_task)
+            steps.append("✨ Agent 2: Personalized email draft created and queued for review.")
 
         # Step 3: Suggest meeting (if very high score)
         if qualification_result.get("score", 0) >= 80:
+            steps.append("📅 Agent 3: Strategic lead priority! Proposing executive meeting times...")
             meeting_task = {
                 "action": "suggest_times",
                 "attendees": [lead_data.get("email")],
                 "duration": 30
             }
             await self.meeting_agent.execute(meeting_task)
+            steps.append("🎯 Agent 3: Optimal meeting windows identified and shared.")
 
+        qualification_result["workflow_steps"] = steps
         return qualification_result
 
     # ========================================================================
@@ -336,192 +339,47 @@ class AgentOrchestrator:
         Return ONLY the word of the category. No punctuation.
         """
         
+        category = "analytics"
         try:
             category = await self.llm.generate(routing_prompt)
             category = category.strip().lower()
             steps.append(f"🎯 Intent identified as: {category.upper()}. Dispatching appropriate CRM Agent.")
         except Exception as e:
             print(f"ERROR: Intent classification failed: {e}")
-            category = "analytics" # Default to analytics on failure
             steps.append("⚠️ Intent classification ambiguous, defaulting to Analytics Agent.")
-        
-        # 2. Route to appropriate agent
+
+        # Initialize response variables
+        data = []
+        sql = ""
+        summary = ""
+        charts = []
+
         try:
-            if "analytics" in category:
-                steps.append("📊 Dispatching Analytics Agent for KPI synthesis...")
-                result = await self.analytics_agent.execute({
-                    "action": "dashboard",
-                    "category": "all",
-                    "db": db
-                })
-                summary = f"I've compiled the latest CRM analytics. {len(result.get('metrics', {}))} data points scanned."
-                data = [{"metric": k, "value": v} for k, v in result.get("kpis", {}).items() if isinstance(v, (int, float))]
-                charts = [{
-                    "type": "bar", 
-                    "xAxis": "metric", 
-                    "yAxis": "value", 
-                    "title": "Core KPI Performance",
-                    "description": "Aggregated metrics across all CRM departments for the current period."
-                }]
-                sql = "SELECT * FROM metrics_daily LIMIT 100"
+            # 2. Route to appropriate agent logic (Simplified for now, delegated to Ask CRM for data)
+            async def run_ask_crm_workflow():
+                 steps.append("🤖 Initializing Ask CRM Agent for complex data extraction...")
+                 ask_agent = self.agents["ask_crm"]
+                 res = await ask_agent.execute({"prompt": prompt, "db": db})
+                 return res
+                 
+            # If the user specifically asked for a custom view, trigger the Ask CRM Agent
+            if category in ["sales", "leads", "customers"] or any(word in prompt_lower for word in ["list", "find", "search", "show", "custom"]):
+                 ask_res = await run_ask_crm_workflow()
+                 data = ask_res.get("data", [])
+                 sql = ask_res.get("sql", "")
+                 summary = ask_res.get("summary", "")
+                 steps.extend(ask_res.get("steps", []))
 
-            # 3. Handle specific entity searches
-            elif "sales" in category or "deal" in prompt_lower:
-                steps.append("💼 Sales Agent engaged: Searching deal pipeline...")
-                from database.models import Deal
-                # Simple keyword search fallback
-                words = [w for w in prompt_lower.split() if len(w) > 3]
-                deal = None
-                for word in words:
-                    deal = db.query(Deal).filter(Deal.name.contains(word)).first()
-                    if deal: break
-                
-                if deal:
-                    result = await self.sales_agent.execute({"deal_id": str(deal.id), "db": db})
-                    data = [result]
-                    summary = f"I've analyzed the '{deal.name}' deal. Its health score is {result.get('health_score')}%."
-                    charts = [{
-                        "type": "bar", 
-                        "xAxis": "name", 
-                        "yAxis": "health_score", 
-                        "title": "Strategic Deal Health",
-                        "description": "Real-time AI analysis of deal momentum and risk factors."
-                    }]
-                else:
-                    deals = db.query(Deal).order_by(Deal.value.desc()).limit(5).all()
-                    data = [{"id": d.id, "name": d.name, "value": d.value, "stage": d.stage} for d in deals]
-                    summary = f"I couldn't find a specific deal matching your query, so here are the top 5 deals in your pipeline."
-                    charts = [{
-                        "type": "pie", 
-                        "xAxis": "name", 
-                        "yAxis": "value", 
-                        "title": "Pipeline Value Distribution",
-                        "description": "Total monetary value across your high-impact deals."
-                    }]
-                steps.append(f"✅ Found {len(data)} deal(s) matching criteria.")
-                sql = "SELECT * FROM deals"
-
-            elif "leads" in category or "contact" in prompt_lower:
-                steps.append("🧲 Lead Agent engaged: Checking qualified prospects...")
-                from database.models import Contact
-                # Simple email search fallback
-                email = next((w for w in prompt_lower.split() if "@" in w), None)
-                lead = None
-                if email:
-                    lead = db.query(Contact).filter(Contact.email == email).first()
-                
-                if lead:
-                    result = await self.lead_agent.execute({"lead_data": {"email": lead.email}, "db": db})
-                    data = [result]
-                    summary = f"I've qualified the lead {lead.email}. Their score is {result.get('score')}."
-                    charts = [{
-                        "type": "bar", 
-                        "xAxis": "email", 
-                        "yAxis": "score", 
-                        "title": "Lead Quality",
-                        "description": "AI-calculated score for a specific prospect email."
-                    }]
-                else:
-                    leads = db.query(Contact).order_by(Contact.lead_score.desc()).limit(10).all()
-                    data = [{"id": l.id, "email": l.email, "lead_score": l.lead_score, "lead_status": l.lead_status} for l in leads]
-                    summary = f"Here are your highest-scoring leads that need attention."
-                    charts = [{
-                        "type": "bar", 
-                        "xAxis": "email", 
-                        "yAxis": "lead_score", 
-                        "title": "Lead Priority Index",
-                        "description": "Top prospects sorted by qualification probability."
-                    }]
-                steps.append(f"✅ Found {len(data)} lead(s) for analysis.")
-                sql = "SELECT * FROM contacts"
-
-            elif "customers" in category or "account" in prompt_lower:
-                steps.append("🤝 Success Agent engaged: Auditing customer relationship health...")
-                from database.models import Customer
-                customers = db.query(Customer).order_by(Customer.health_score.asc()).limit(5).all()
-                data = [{"id": c.id, "name": c.name, "health_score": c.health_score, "churn_risk": c.churn_risk} for c in customers]
-                summary = f"I've identified {len(customers)} accounts showing churn signals. High priority intervention recommended."
-                charts = [{
-                    "type": "area", 
-                    "xAxis": "name", 
-                    "yAxis": "health_score", 
-                    "title": "Customer Loyalty Trend",
-                    "description": "Monitoring account health across high-risk sectors."
-                }]
-                steps.append(f"✅ Scanning {len(data)} customer records for churn signals.")
-                sql = "SELECT * FROM customers"
-
-            else:
-                steps.append("🌐 System Agent fallback: Compiling general CRM overview...")
-                # Analytics / General fallback
-                result = await self.analytics_agent.execute({"action": "dashboard", "category": "all", "db": db})
-                data = [{"metric": k, "value": v} for k, v in result.get("kpis", {}).items() if isinstance(v, (int, float))]
-                summary = f"Here is your real-time CRM performance overview. All systems are operational."
-                charts = [{
-                    "type": "bar", 
-                    "xAxis": "metric", 
-                    "yAxis": "value", 
-                    "title": "System Vitality KPI",
-                    "description": "Live health signals from across the AI CRM landscape."
-                }]
-            
-            # --- AGENTIC SQL RETRY ENGINE (Helper) ---
-            async def execute_sql_with_retry(query_prompt, db, max_tries=3):
-                steps.append(f"🤖 Agent 2: Initializing SQL Agent for precise data extraction (Max Tries: {max_tries})...")
-                current_try = 1
-                last_error = None
-                sql = ""
-
-                while current_try <= max_tries:
-                    try:
-                        steps.append(f"🛠️ Agent 2: Generating and validating SQL (Try {current_try})...")
-                        # Generate SQL
-                        gen_prompt = f"""
-                        Given the CRM database schema (Deals: id, name, value, stage, health_score; Leads: id, email, first_name, lead_score, lead_status; Customers: id, name, health_score, churn_risk),
-                        Generate a valid SQLite query for: "{query_prompt}"
-                        {f"Previous error: {last_error}. Please correct the SQL." if last_error else ""}
-                        Return ONLY the SQL string.
-                        """
-                        sql = await self.llm.generate(gen_prompt)
-                        sql = sql.replace("```sql", "").replace("```", "").strip()
-                        
-                        # Execute SQL
-                        steps.append(f"🚀 Agent 2: Executing Query: {sql[:40]}...")
-                        from sqlalchemy import text
-                        res = db.execute(text(sql)).fetchall()
-                        steps.append(f"✅ Agent 2: Query successful. {len(res)} rows retrieved.")
-                        return sql, [dict(r._mapping) for r in res]
-                    except Exception as e:
-                        last_error = str(e)
-                        steps.append(f"❌ Agent 2: SQL Attempt {current_try} failed: {last_error[:30]}...")
-                        current_try += 1
-                
-                steps.append("🛑 Agent 2: SQL Agent failed after 3 tries. Falling back to default records.")
-                return sql, data # Fallback to whatever 'data' already has
-
-            # If the user specifically asked for a custom view, trigger the SQL Agent
-            if "custom" in prompt_lower or any(word in prompt_lower for word in ["list", "find", "search", "show"]):
-                sql_final, custom_data = await execute_sql_with_retry(prompt, db)
-                if custom_data:
-                    data = custom_data
-                    sql = sql_final
-                    steps.append("🎨 Agent 3: Visualizer Agent processing specialized dataset...")
-
-            # 4. Generate Data-Aware Summary
-            steps.append("🧩 Agent 4: Reasoning Agent synthesizing final narrative response...")
-            summary_prompt = f"""
-            Summarize the following CRM data for the user in a professional, concise, and helpful tone.
-            Data: {data[:10]} (showing first 10 records)
-            Context: The category is {category}.
-            
-            Return ONLY the summary text (max 2 sentences).
-            """
-            summary = ""
-            try:
+            # 4. Fallback Results for Summary if missing
+            if not summary:
+                steps.append("🧩 Reasoning Agent synthesizing final narrative response...")
+                summary_prompt = f"""
+                Summarize the following CRM data for the user in a professional, concise, and helpful tone.
+                Data Snippet: {str(data)[:200]}
+                Query: "{prompt}"
+                Return ONLY the summary text (max 2 sentences).
+                """
                 summary = await self.llm.generate(summary_prompt)
-                summary = summary.strip()
-            except:
-                summary = "I've processed your request. See the updated dashboard below."
 
             return {
                 "status": "success",

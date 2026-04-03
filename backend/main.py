@@ -96,13 +96,23 @@ async def qualify_lead(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
-    """Trigger Lead Qualification Agent"""
+    """Trigger Lead Qualification Agent (Async)"""
     background_tasks.add_task(
         orchestrator.process_new_lead,
         lead_data,
         db
     )
     return {"status": "processing", "message": "Lead qualification started"}
+
+
+@app.post("/api/leads/workflow")
+async def process_lead_workflow(
+    lead_data: Dict[str, Any],
+    db: Session = Depends(get_db)
+):
+    """Process lead and return full agentic workflow steps (Sync)"""
+    result = await orchestrator.process_new_lead(lead_data, db)
+    return result
 
 
 @app.post("/api/agents/analyze-email")
