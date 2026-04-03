@@ -35,22 +35,26 @@ class CustomerSuccessAgent(BaseAgent):
         """Execute customer success workflow"""
         customer_id = task.get("customer_id")
         action = task.get("action", "monitor")
+        db = task.get("db") # Extract db session
 
         if action == "monitor":
-            return await self.monitor_customer(customer_id)
+            return await self.monitor_customer(customer_id, db)
         elif action == "check_churn_risk":
-            return await self.check_churn_risk(customer_id)
+            return await self.check_churn_risk(customer_id, db)
         elif action == "identify_opportunities":
-            return await self.identify_opportunities(customer_id)
+            return await self.identify_opportunities(customer_id, db)
         else:
             return {"error": "Unknown action"}
 
-    async def monitor_customer(self, customer_id: str) -> Dict[str, Any]:
+    async def monitor_customer(self, customer_id: str, db: Any = None) -> Dict[str, Any]:
         """Comprehensive customer health monitoring"""
         await self.log_activity("monitoring_customer", {"customer_id": customer_id})
 
         # Get customer data
-        customer_data = await self._get_customer_data(customer_id)
+        customer_data = await self._get_customer_data(customer_id, db)
+        
+        if "error" in customer_data:
+            return customer_data
 
         # Calculate health score
         health_score = await self.calculate_health_score(customer_data)
@@ -62,7 +66,7 @@ class CustomerSuccessAgent(BaseAgent):
         engagement = await self.analyze_engagement(customer_data)
 
         # Identify opportunities
-        opportunities = await self.identify_opportunities(customer_id)
+        opportunities = await self.identify_opportunities(customer_id, db)
 
         # Recommend actions
         actions = await self.recommend_success_actions(
@@ -73,6 +77,7 @@ class CustomerSuccessAgent(BaseAgent):
 
         result = {
             "customer_id": customer_id,
+            "name": customer_data.get("name"),
             "health_score": health_score,
             "churn_risk": churn_risk,
             "engagement": engagement,
@@ -80,6 +85,15 @@ class CustomerSuccessAgent(BaseAgent):
             "recommended_actions": actions,
             "status": self._get_customer_status(health_score, churn_risk)
         }
+
+        # Update DB if available
+        if db:
+            from database.models import Customer
+            customer = db.query(Customer).filter(Customer.id == customer_id).first()
+            if customer:
+                customer.health_score = health_score
+                customer.churn_risk = churn_risk.get("level", "low")
+                db.commit()
 
         # Alert if at-risk
         if churn_risk["level"] in ["high", "critical"]:
@@ -327,9 +341,44 @@ class CustomerSuccessAgent(BaseAgent):
             "health_score": health_score
         }
 
-    async def _get_customer_data(self, customer_id: str) -> Dict[str, Any]:
+    async def _get_customer_data(self, customer_id: str, db: Any = None) -> Dict[str, Any]:
         """Get customer data from database"""
-        # Placeholder - would query actual database
+        if db:
+            from database.models import Customer
+            customer = db.query(Customer).filter(Customer.id == customer_id).first()
+            if customer:
+                return {
+                    "id": customer.id,
+                    "name": customer.name,
+                    "industry": customer.industry,
+                    "total_spend": customer.total_spend or 0,
+                    "status": customer.status,
+                    "health_score": customer.health_score or 50,
+                    "churn_risk": customer.churn_risk or "low",
+                    "plan": "Enterprise", # Mock
+                    "mrr": (customer.total_spend or 5000) / 12,
+                    "logins_per_week": 10,
+                    "features_used": 7,
+                    "total_features": 10,
+                    "daily_active_users": 20,
+                    "license_usage_percent": 85,
+                    "days_since_login": 1,
+                    "support_tickets_30d": 3,
+                    "training_attended": 2,
+                    "community_posts": 4,
+                    "critical_tickets": 0,
+                    "avg_resolution_hours": 12,
+                    "csat_score": 4.8,
+                    "payment_delays": 0,
+                    "usage_trend": "increasing",
+                    "engagement_score": 88,
+                    "days_to_renewal": 120,
+                    "team_size": 50,
+                    "user_growth_30d": 10
+                }
+            return {"error": "Customer not found"}
+
+        # Placeholder
         return {
             "id": customer_id,
             "plan": "Professional",

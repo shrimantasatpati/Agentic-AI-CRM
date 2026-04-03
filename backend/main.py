@@ -33,7 +33,12 @@ app = FastAPI(
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure for production
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -173,62 +178,29 @@ async def generate_dashboard(
 @app.post("/api/query")
 async def query_data(request: QueryRequest, db: Session = Depends(get_db)):
     """Unified query endpoint consumed by frontend."""
+    # Use the orchestrator to handle the natural language query
+    response = await orchestrator.handle_user_query(request.prompt, db)
+    return response
 
-    # Use analytics agent to generate dashboard context for natural language queries.
-    dashboard = await orchestrator.generate_dashboard("all", db)
 
-    # Build simple metric table from kpis + metrics
-    raw_items = []
-    if isinstance(dashboard.get("kpis"), dict):
-        for key, value in dashboard["kpis"].items():
-            if isinstance(value, (int, float)):
-                raw_items.append({"metric": key, "value": float(value)})
+# ============================================================================
+# DEMO / AUTOMATION TRIGGERS
+# ============================================================================
 
-    if isinstance(dashboard.get("metrics"), dict):
-        for key, value in dashboard["metrics"].items():
-            if isinstance(value, (int, float)):
-                raw_items.append({"metric": key, "value": float(value)})
-
-    # Fallback for no numeric metrics
-    if not raw_items:
-        raw_items = [{"metric": "empty", "value": 0}]
-
-    # Build chart config for frontend display
-    charts = [
-        {
-            "type": "bar",
-            "xAxis": "metric",
-            "yAxis": "value",
-            "title": "Top CRM Metrics",
-            "description": "Bar chart showing key metric values for current dashboard query."
-        }
-    ]
-
-    suggested = [
-        "Revenue by region",
-        "Total sales over time",
-        "Number of employees by department",
-        "Which products sell best?"
-    ]
-
-    summary_text = (dashboard.get("insights") and len(dashboard.get("insights")) and str(dashboard.get("insights")[0])) or "AI dashboard insights are ready."
-
-    return {
-        "status": "success",
-        "data": raw_items,
-        "dashboard_config": {
-            "charts": charts,
-            "suggested_queries": suggested
-        },
-        "summary_text": summary_text,
-        "metadata": {
-            "row_count": len(raw_items),
-            "columns": ["metric", "value"],
-            "pii_columns_redacted": [],
-            "sql_used": "", 
-            "execution_time_ms": 0
-        }
-    }
+@app.post("/api/demo/run-agent-workflow")
+async def run_demo_workflow(
+    workflow_type: str = "daily",
+    db: Session = Depends(get_db)
+):
+    """Manually trigger the daily/weekly automated workflows for demo purposes."""
+    if workflow_type == "daily":
+        await orchestrator.run_daily_workflows(db)
+        return {"status": "success", "message": "Daily agentic workflows triggered"}
+    elif workflow_type == "weekly":
+        await orchestrator.run_weekly_workflows(db)
+        return {"status": "success", "message": "Weekly executive workflows triggered"}
+    else:
+        raise HTTPException(status_code=400, detail="Invalid workflow type")
 
 
 # ============================================================================

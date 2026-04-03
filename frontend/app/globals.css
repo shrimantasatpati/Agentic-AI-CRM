@@ -1,0 +1,275 @@
+@import "tailwindcss";
+
+/* ── Google Fonts via next/font ─────────────────────────────────────────────── */
+:root {
+  --font-outfit: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+  /* ── APPLE LIGHT THEME (Default) ───────────────────────────────────────────── */
+  --bg-base: #f5f5f7;            /* Apple light gray background */
+  --bg-surface: #ffffff;         /* Pure white cards */
+  --bg-elevated: #ffffff;
+  --bg-sidebar: rgba(245, 245, 247, 0.6); /* Translucent sidebar */
+  --bg-glass: rgba(255, 255, 255, 0.65);
+  --bg-glass-hover: rgba(255, 255, 255, 0.85);
+
+  --border-subtle: rgba(0, 0, 0, 0.08); /* Darkened slightly */
+  --border-medium: rgba(0, 0, 0, 0.15);
+  --border-strong: rgba(0, 0, 0, 0.25);
+
+  --text-primary: #1d1d1f;       /* Apple primary text */
+  --text-secondary: #424245;     /* Darkened for better contrast */
+  --text-muted: #6e6e73;
+
+  /* Apple System Colors */
+  --accent-primary: #0066cc;     /* System Blue */
+  --accent-primary-hover: #004499;
+  --accent-secondary: #5e5ce6;   /* System Indigo */
+  --accent-success: #34c759;     /* System Green */
+  --accent-warning: #ff9500;     /* System Orange */
+  --accent-danger: #ff3b30;      /* System Red */
+
+  --gradient-brand: linear-gradient(135deg, #0066cc, #5e5ce6);
+  
+  /* Deep, soft shadows */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 8px 30px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.08);
+  
+  /* Chart Tooltips */
+  --chart-tooltip-bg: rgba(255, 255, 255, 0.85);
+  --chart-tooltip-border: rgba(0, 0, 0, 0.06);
+  --chart-tooltip-text: #1d1d1f;
+  --chart-tooltip-label: #86868b;
+  --chart-axis-text: #86868b;
+  --chart-grid-stroke: rgba(0, 0, 0, 0.04);
+}
+
+/* ── APPLE DARK THEME ────────────────────────────────────────────────────────── */
+.dark {
+  --bg-base: #000000;            /* True black for OLED/deep contrast */
+  --bg-surface: #1c1c1e;         /* Apple dark surface */
+  --bg-elevated: #2c2c2e;
+  --bg-sidebar: rgba(28, 28, 30, 0.6);
+  --bg-glass: rgba(28, 28, 30, 0.65);
+  --bg-glass-hover: rgba(44, 44, 46, 0.85);
+
+  --border-subtle: rgba(255, 255, 255, 0.1); /* Brightened slightly */
+  --border-medium: rgba(255, 255, 255, 0.18);
+  --border-strong: rgba(255, 255, 255, 0.3);
+
+  --text-primary: #f5f5f7;
+  --text-secondary: #dcdce0;     /* Brightened for better contrast */
+  --text-muted: #86868b;
+
+  --accent-primary: #0a84ff;     /* System Blue Dark */
+  --accent-primary-hover: #409cff;
+  --accent-secondary: #5e5ce6;
+  --accent-success: #32d74b;
+  --accent-warning: #ff9f0a;
+  --accent-danger: #ff453a;
+
+  --gradient-brand: linear-gradient(135deg, #0a84ff, #5e5ce6);
+
+  --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 10px 40px rgba(0, 0, 0, 0.6);
+  --shadow-lg: 0 20px 60px rgba(0, 0, 0, 0.8);
+
+  --chart-tooltip-bg: rgba(28, 28, 30, 0.85);
+  --chart-tooltip-border: rgba(255, 255, 255, 0.1);
+  --chart-tooltip-text: #f5f5f7;
+  --chart-tooltip-label: #86868b;
+  --chart-axis-text: #636366;
+  --chart-grid-stroke: rgba(255, 255, 255, 0.04);
+}
+
+/* ── Base Reset ──────────────────────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: var(--font-outfit);
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  min-height: 100vh;
+  overflow-x: hidden;
+  transition: background-color 0.4s cubic-bezier(0.2, 0.8, 0.2, 1), 
+              color 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* ── Scrollbars ──────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-medium); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
+
+/* ── Typography Enhancements ─────────────────────────────────────────────────── */
+h1, h2, h3, h4, h5, h6 { 
+  font-weight: 600; 
+  letter-spacing: -0.025em; 
+}
+p {
+  line-height: 1.5;
+  letter-spacing: -0.01em;
+}
+
+/* ── Glass Components ────────────────────────────────────────────────────────── */
+.apple-glass {
+  background: var(--bg-glass);
+  backdrop-filter: blur(24px) saturate(150%);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  border: 1px solid var(--border-subtle);
+}
+
+.apple-card {
+  background: var(--bg-surface);
+  border-radius: 24px;
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border-medium);
+  padding: 32px;
+  transition: all 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.apple-card:hover {
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-2px);
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────────── */
+.btn-primary {
+  background: var(--accent-primary);
+  color: #fff;
+  border: none;
+  border-radius: 999px; /* Pill shape */
+  font-weight: 500;
+  cursor: pointer;
+  padding: 10px 20px;
+  font-size: 0.95rem;
+  transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-primary-hover);
+  transform: scale(1.02);
+}
+
+.btn-primary:active:not(:disabled) { transform: scale(0.98); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+  border: none;
+  border-radius: 999px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-ghost:hover:not(:disabled) {
+  background: var(--border-subtle);
+  color: var(--text-primary);
+}
+
+/* ── Badges ──────────────────────────────────────────────────────────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.badge-indigo { background: rgba(0, 102, 204, 0.1); color: var(--accent-primary); }
+.badge-green  { background: rgba(52, 199, 89, 0.1); color: var(--accent-success); }
+.badge-amber  { background: rgba(255, 149, 0, 0.1); color: var(--accent-warning); }
+.badge-gray   { background: var(--border-subtle); color: var(--text-secondary); }
+
+/* ── Animations ──────────────────────────────────────────────────────────────── */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.fade-in-up {
+  animation: fadeInUp 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+@keyframes spin {
+  0%   { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.spinner {
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  border: 2px solid var(--border-medium);
+  border-top-color: var(--text-secondary);
+  animation: spin 0.8s linear infinite;
+}
+
+/* ── Custom Data Table ───────────────────────────────────────────────────────── */
+.data-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.875rem;
+}
+
+.data-table th {
+  color: var(--text-secondary);
+  font-weight: 500;
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  padding: 14px 16px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-strong);
+  white-space: nowrap;
+}
+
+.data-table td {
+  padding: 16px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  font-weight: 400;
+  transition: background-color 0.2s ease;
+}
+
+.data-table tr:hover td {
+  background: var(--bg-glass);
+}
+
+.data-table tr:last-child td { border-bottom: none; }
+
+/* ── Hyper-Compressed Mini Data Table ────────────────────────────────────────── */
+.data-table-mini th {
+  padding: 6px 12px;
+  font-size: 0.70rem;
+}
+
+.data-table-mini td {
+  padding: 6px 12px;
+  font-size: 0.75rem;
+}
+
+/* ── Mobile Layout & Chart Adjustments ────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .chart-card-container {
+    min-width: 100% !important;
+  }
+}

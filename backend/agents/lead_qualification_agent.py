@@ -35,10 +35,25 @@ class LeadQualificationAgent(BaseAgent):
     async def execute(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """Execute lead qualification workflow"""
         lead_data = task.get("lead_data", {})
+        db = task.get("db") # Extract db session
+        
+        email = lead_data.get("email")
+        await self.log_activity("lead_received", {"email": email})
 
-        await self.log_activity("lead_received", {"email": lead_data.get("email")})
+        # Step 1: Enrich lead data (if it already exists in DB, fetch it)
+        if db:
+            from database.models import Contact
+            existing_contact = db.query(Contact).filter(Contact.email == email).first()
+            if existing_contact:
+                lead_data.update({
+                    "email": existing_contact.email,
+                    "first_name": existing_contact.first_name,
+                    "last_name": existing_contact.last_name,
+                    "job_title": existing_contact.job_title,
+                    "lead_score": existing_contact.lead_score,
+                    "lead_status": existing_contact.lead_status
+                })
 
-        # Step 1: Enrich lead data
         enriched_data = await self.enrich_lead(lead_data)
 
         # Step 2: Score the lead
@@ -50,16 +65,25 @@ class LeadQualificationAgent(BaseAgent):
         # Step 4: Route to appropriate team
         routing = await self.route_lead(score, signals)
 
-        # Step 5: Publish event for other agents
+        # Step 5: Update DB if available
+        if db:
+            from database.models import Contact
+            contact = db.query(Contact).filter(Contact.email == email).first()
+            if contact:
+                contact.lead_score = score
+                contact.lead_status = routing.get("team", "unqualified")
+                db.commit()
+
+        # Step 6: Publish event for other agents
         await self.publish_event("lead_qualified", {
-            "lead_id": enriched_data.get("id"),
+            "email": email,
             "score": score,
             "routing": routing,
             "signals": signals
         })
 
         result = {
-            "lead_id": enriched_data.get("id"),
+            "email": email,
             "original_data": lead_data,
             "enriched_data": enriched_data,
             "score": score,

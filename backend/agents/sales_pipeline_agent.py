@@ -36,22 +36,26 @@ class SalesPipelineAgent(BaseAgent):
         """Execute sales pipeline analysis"""
         deal_id = task.get("deal_id")
         action = task.get("action", "analyze")
+        db = task.get("db") # Extract db session
 
         if action == "analyze":
-            return await self.analyze_deal(deal_id)
+            return await self.analyze_deal(deal_id, db)
         elif action == "update_stage":
-            return await self.update_deal_stage(deal_id, task.get("new_stage"))
+            return await self.update_deal_stage(deal_id, task.get("new_stage"), db)
         elif action == "check_stalled":
-            return await self.check_stalled_deals()
+            return await self.check_stalled_deals(db)
         else:
             return {"error": "Unknown action"}
 
-    async def analyze_deal(self, deal_id: str) -> Dict[str, Any]:
+    async def analyze_deal(self, deal_id: str, db: Any = None) -> Dict[str, Any]:
         """Comprehensive deal analysis"""
         await self.log_activity("analyzing_deal", {"deal_id": deal_id})
 
         # Get deal data
-        deal_data = await self._get_deal_data(deal_id)
+        deal_data = await self._get_deal_data(deal_id, db)
+
+        if "error" in deal_data:
+            return deal_data
 
         # Calculate health score
         health_score = await self.calculate_health_score(deal_data)
@@ -70,6 +74,7 @@ class SalesPipelineAgent(BaseAgent):
 
         result = {
             "deal_id": deal_id,
+            "name": deal_data.get("name"),
             "health_score": health_score,
             "close_probability": close_probability,
             "is_stalled": is_stalled,
@@ -77,6 +82,16 @@ class SalesPipelineAgent(BaseAgent):
             "forecast_close_date": forecast_date,
             "risk_factors": await self.identify_risk_factors(deal_data)
         }
+
+        # Update DB if available
+        if db:
+            from database.models import Deal
+            deal = db.query(Deal).filter(Deal.id == deal_id).first()
+            if deal:
+                deal.lead_score = health_score # Use as a proxy for health
+                deal.is_stalled = is_stalled
+                # deal.close_probability = close_probability # If model has this field
+                db.commit()
 
         # Publish event for alerts
         if health_score < 50 or is_stalled:
@@ -310,9 +325,34 @@ class SalesPipelineAgent(BaseAgent):
 
         return stalled_deals
 
-    async def _get_deal_data(self, deal_id: str) -> Dict[str, Any]:
+    async def _get_deal_data(self, deal_id: str, db: Any = None) -> Dict[str, Any]:
         """Get deal data from database"""
-        # Placeholder - would query actual CRM database
+        if db:
+            from database.models import Deal
+            deal = db.query(Deal).filter(Deal.id == deal_id).first()
+            if deal:
+                # Calculate age manually for the prompt
+                age_days = (datetime.now() - deal.created_at).days if deal.created_at else 0
+                return {
+                    "id": deal.id,
+                    "name": deal.name,
+                    "value": deal.value,
+                    "stage": deal.stage,
+                    "days_in_stage": age_days, # Approximation
+                    "last_contact_days_ago": 2, # Mock
+                    "engagement_level": "medium",
+                    "decision_maker_engaged": True,
+                    "competitor_activity": "low",
+                    "budget_confirmed": True,
+                    "timeline_confirmed": True,
+                    "age_days": age_days,
+                    "activities_count": 10,
+                    "proposal_sent": deal.stage in ['proposal', 'negotiation', 'won'],
+                    "blockers": []
+                }
+            return {"error": "Deal not found"}
+        
+        # Placeholder
         return {
             "id": deal_id,
             "value": 50000,
