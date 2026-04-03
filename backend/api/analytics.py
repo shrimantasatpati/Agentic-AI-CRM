@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from database.connection import get_db
 from database.models import Deal, Contact, Customer
 
@@ -18,13 +19,11 @@ async def get_dashboard(db: Session = Depends(get_db)):
     total_customers = db.query(Customer).count()
 
     # Revenue metrics
-    total_pipeline = db.query(Deal).filter(
+    total_pipeline = db.query(func.sum(Deal.value)).filter(
         Deal.stage.in_(['prospecting', 'qualification', 'proposal', 'negotiation'])
-    ).with_entities(db.func.sum(Deal.value)).scalar() or 0
-
-    total_mrr = db.query(Customer).with_entities(
-        db.func.sum(Customer.mrr)
     ).scalar() or 0
+
+    total_mrr = db.query(func.sum(Customer.mrr)).scalar() or 0
 
     return {
         "leads": {
@@ -52,9 +51,7 @@ async def get_pipeline_metrics(db: Session = Depends(get_db)):
 
     for stage in stages:
         count = db.query(Deal).filter(Deal.stage == stage).count()
-        value = db.query(Deal).filter(Deal.stage == stage).with_entities(
-            db.func.sum(Deal.value)
-        ).scalar() or 0
+        value = db.query(func.sum(Deal.value)).filter(Deal.stage == stage).scalar() or 0
 
         pipeline[stage] = {
             "count": count,
