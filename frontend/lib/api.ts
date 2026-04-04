@@ -79,3 +79,39 @@ export const runDailyWorkflow = () =>
 
 export const runWeeklyWorkflow = () =>
   apiFetch('/api/demo/run-agent-workflow?workflow_type=weekly', { method: 'POST' });
+
+// ---- SYNCHRONOUS Agent Endpoints (return real LLM results) ----
+export const qualifyLeadSync = (data: Record<string, unknown>) =>
+  apiFetch('/api/leads/workflow', { method: 'POST', body: JSON.stringify(data) });
+
+export const analyzeEmailSync = (emailData: Record<string, unknown>) =>
+  apiFetch('/api/agents/analyze-email/sync', { method: 'POST', body: JSON.stringify(emailData) });
+
+export const analyzeDealSync = (dealId: string, body: Record<string, unknown> = {}) =>
+  apiFetch(`/api/agents/analyze-deal/${dealId}/sync`, { method: 'POST', body: JSON.stringify(body) });
+
+export const monitorCustomerSync = (customerId: string) =>
+  apiFetch(`/api/agents/monitor-customer/${customerId}/sync`, { method: 'POST' });
+
+export const scheduleMeetingSync = (data: Record<string, unknown>) =>
+  apiFetch('/api/agents/schedule-meeting/sync', { method: 'POST', body: JSON.stringify(data) });
+
+export const generateAnalyticsSync = (category = 'all') =>
+  apiFetch('/api/agents/generate-analytics/sync', { method: 'POST', body: JSON.stringify({ category }) });
+
+// ---- Model Configuration ----
+export const getCurrentModel = () =>
+  apiFetch<{ provider: string; model: string }>('/api/config/model');
+
+export const switchModel = (model: string) =>
+  apiFetch<{ status: string; provider: string; model: string }>(
+    '/api/config/model',
+    { method: 'POST', body: JSON.stringify({ model }) }
+  );
+
+// ---- Tracked Webhooks (synchronous, show agent result) ----
+export const fireEmailWebhookTracked = (data: Record<string, unknown>) =>
+  apiFetch('/webhooks/email-received/tracked', { method: 'POST', body: JSON.stringify(data) });
+
+export const fireFormWebhookTracked = (data: Record<string, unknown>) =>
+  apiFetch('/webhooks/form-submission/tracked', { method: 'POST', body: JSON.stringify(data) });

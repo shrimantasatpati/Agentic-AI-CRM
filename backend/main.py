@@ -248,6 +248,111 @@ async def form_webhook(
 
 
 # ============================================================================
+# MODEL CONFIGURATION — Switch between Gemini / Groq / xAI at runtime
+# ============================================================================
+
+class ModelSwitchRequest(BaseModel):
+    model: str
+
+
+@app.get("/api/config/model")
+async def get_current_model():
+    """Return the currently active LLM provider and model name."""
+    return orchestrator.get_llm_info()
+
+
+@app.post("/api/config/model")
+async def switch_model(req: ModelSwitchRequest):
+    """Switch the active LLM model at runtime (affects all agents immediately)."""
+    info = orchestrator.switch_model(req.model)
+    return {"status": "switched", **info}
+
+
+# ============================================================================
+# SYNCHRONOUS AGENT ENDPOINTS — Return full results (not background tasks)
+# These are used by the frontend to get real LLM-powered results.
+# ============================================================================
+
+@app.post("/api/agents/analyze-email/sync")
+async def analyze_email_sync(
+    email_data: Dict[str, Any],
+    db: Session = Depends(get_db)
+):
+    """Run Email Intelligence Agent synchronously and return full result."""
+    result = await orchestrator.process_email(email_data, db)
+    return result
+
+
+@app.post("/api/agents/analyze-deal/{deal_id}/sync")
+async def analyze_deal_sync(
+    deal_id: str,
+    body: Dict[str, Any] = {},
+    db: Session = Depends(get_db)
+):
+    """Run Sales Pipeline Agent synchronously and return full analysis."""
+    result = await orchestrator.analyze_deal(deal_id, db)
+    return result
+
+
+@app.post("/api/agents/monitor-customer/{customer_id}/sync")
+async def monitor_customer_sync(
+    customer_id: str,
+    db: Session = Depends(get_db)
+):
+    """Run Customer Success Agent synchronously and return full monitoring result."""
+    result = await orchestrator.monitor_customer(customer_id, db)
+    return result
+
+
+@app.post("/api/agents/schedule-meeting/sync")
+async def schedule_meeting_sync(
+    meeting_request: Dict[str, Any],
+    db: Session = Depends(get_db)
+):
+    """Run Meeting Scheduler Agent synchronously and return full result."""
+    result = await orchestrator.schedule_meeting(meeting_request, db)
+    return result
+
+
+@app.post("/api/agents/generate-analytics/sync")
+async def generate_analytics_sync(
+    body: Dict[str, Any] = {},
+    db: Session = Depends(get_db)
+):
+    """Run Analytics Agent synchronously and return full result."""
+    category = body.get("category", "all")
+    result = await orchestrator.generate_dashboard(category, db)
+    return result
+
+
+# ============================================================================
+# WEBHOOK WITH AGENT RESULT — Fire webhook and track job outcome
+# ============================================================================
+
+_webhook_results: Dict[str, Any] = {}  # in-memory store for demo purposes
+
+
+@app.post("/webhooks/email-received/tracked")
+async def email_webhook_tracked(
+    email_data: Dict[str, Any],
+    db: Session = Depends(get_db)
+):
+    """Webhook for incoming emails — runs agent synchronously and returns the result."""
+    result = await orchestrator.process_email(email_data, db)
+    return {"status": "processed", "agent_result": result}
+
+
+@app.post("/webhooks/form-submission/tracked")
+async def form_webhook_tracked(
+    form_data: Dict[str, Any],
+    db: Session = Depends(get_db)
+):
+    """Webhook for form submissions — runs lead agent synchronously and returns result."""
+    result = await orchestrator.process_new_lead(form_data, db)
+    return {"status": "processed", "agent_result": result}
+
+
+# ============================================================================
 # RUN SERVER
 # ============================================================================
 

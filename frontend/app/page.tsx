@@ -267,7 +267,7 @@ export default function MissionControlPage() {
             <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
               <XAxis
                 dataKey="stage"
-                tick={{ fontSize: 11, fill: 'var(--text-tertiary)', textTransform: 'capitalize' }}
+                tick={{ fontSize: 11, fill: 'var(--text-tertiary)' }}
                 axisLine={false} tickLine={false}
               />
               <YAxis
@@ -282,8 +282,8 @@ export default function MissionControlPage() {
                   borderRadius: 10,
                   fontSize: 12,
                 }}
-                formatter={(v: number, name: string) =>
-                  name === 'value' ? [`$${v}K`, 'Value'] : [v, 'Deals']
+                formatter={(v, name) =>
+                  name === 'value' ? [`$${Number(v)}K`, 'Value'] : [v, 'Deals']
                 }
               />
               <Bar dataKey="value" radius={[6, 6, 0, 0]}>

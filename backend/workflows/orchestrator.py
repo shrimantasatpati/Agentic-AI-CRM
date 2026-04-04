@@ -1,4 +1,4 @@
-from typing import Dict, Any, cast, Callable, Optional
+from typing import Dict, Any, cast, Callable, Optional, List
 from sqlalchemy.orm import Session
 import asyncio
 import os
@@ -16,51 +16,151 @@ from agents import (
 )
 
 
-class GrokLLMWrapper:
-    def __init__(self) -> None:
-        api_key = os.getenv("XAI_API_KEY")
-        self.model_name: str = os.getenv("XAI_MODEL_NAME", "grok-2-1212")
-        self.base_url: str = os.getenv("XAI_BASE_URL", "https://api.x.ai/v1")
+# ============================================================
+# MULTI-LLM WRAPPER — Supports Gemini, Groq, and xAI/Grok
+# Auto-detects available API key and selects the provider.
+# Gemini and Groq both expose OpenAI-compatible endpoints.
+# ============================================================
+
+class MultiLLMWrapper:
+    """
+    Unified LLM wrapper that supports:
+    - Google Gemini (via OpenAI-compatible endpoint)
+    - Groq (via OpenAI-compatible endpoint)
+    - xAI/Grok (via OpenAI-compatible endpoint)
+    Priority: Gemini → Groq → xAI → Mock
+    """
+
+    # Registry of supported providers
+    PROVIDERS = {
+        "gemini": {
+            "env_key":  "GEMINI_API_KEY",
+            "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+            "default_model": "gemini-2.5-flash-lite-preview-06-17",
+        },
+        "groq": {
+            "env_key":  "GROQ_API_KEY",
+            "base_url": "https://api.groq.com/openai/v1",
+            "default_model": "llama-3.1-8b-instant",
+        },
+        "xai": {
+            "env_key":  "XAI_API_KEY",
+            "base_url": "https://api.x.ai/v1",
+            "default_model": "grok-2-1212",
+        },
+    }
+
+    def __init__(self, preferred_model: Optional[str] = None) -> None:
         self._client: Optional[AsyncOpenAI] = None
-        
+        self.provider: str = "mock"
+        self.model_name: str = "mock"
+        self._init_client(preferred_model)
+
+    def _init_client(self, preferred_model: Optional[str] = None) -> None:
+        """Detect available API key and initialize the appropriate client."""
+        # Allow explicit override via MODEL_PROVIDER env var
+        force_provider = os.getenv("MODEL_PROVIDER", "").lower()
+
+        provider_order = [force_provider] if force_provider in self.PROVIDERS else []
+        provider_order += [p for p in ["gemini", "groq", "xai"] if p not in provider_order]
+
+        for provider in provider_order:
+            cfg = self.PROVIDERS[provider]
+            api_key = os.getenv(cfg["env_key"])
+            if not api_key:
+                continue
+
+            # Use preferred_model if supplied and it belongs to this provider,
+            # otherwise fall back to the provider default.
+            model = preferred_model or os.getenv("GEMINI_MODEL_NAME") if provider == "gemini" else None
+            model = model or cfg["default_model"]
+
+            try:
+                self._client = AsyncOpenAI(
+                    api_key=api_key,
+                    base_url=cfg["base_url"],
+                )
+                self.provider   = provider
+                self.model_name = model
+                print(f"[LLM] Initialized {provider.upper()} → model: {model}")
+                return
+            except Exception as e:
+                print(f"[LLM] Failed to init {provider}: {e}")
+                continue
+
+        print("[LLM] WARNING: No valid API key found. Running in MOCK mode.")
+
+    def switch_model(self, model_name: str) -> None:
+        """
+        Switch to a different model at runtime.
+        Determines the provider from the model name prefix.
+        """
+        normalized = model_name.lower()
+        if "gemini" in normalized:
+            target_provider = "gemini"
+        elif "llama" in normalized or "mixtral" in normalized or "groq" in normalized:
+            target_provider = "groq"
+        elif "grok" in normalized:
+            target_provider = "xai"
+        else:
+            target_provider = self.provider  # keep current provider
+
+        cfg = self.PROVIDERS.get(target_provider, {})
+        api_key = os.getenv(cfg.get("env_key", ""), "")
         if not api_key:
-            print("WARNING: XAI_API_KEY is not set in environment.")
+            print(f"[LLM] Cannot switch to {target_provider}: no API key.")
             return
 
-        self._client = AsyncOpenAI(
-            api_key=api_key,
-            base_url=self.base_url
-        )
+        try:
+            self._client = AsyncOpenAI(
+                api_key=api_key,
+                base_url=cfg["base_url"],
+            )
+            self.provider   = target_provider
+            self.model_name = model_name
+            print(f"[LLM] Switched to {target_provider.upper()} → model: {model_name}")
+        except Exception as e:
+            print(f"[LLM] Switch to {model_name} failed: {e}")
 
     async def generate(self, prompt: str) -> str:
         if self._client is None:
-            return "Mock Grok response (missing configuration)"
+            return f"[MOCK — no LLM configured] Prompt received: {prompt[:80]}..."
 
         try:
             response = await self._client.chat.completions.create(
                 model=self.model_name,
-                messages=[{"role": "user", "content": prompt}]
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=1024,
             )
             return response.choices[0].message.content or ""
         except Exception as e:
-            print(f"ERROR: xAI API call failed: {e}")
-            return f"Error: Could not reach Grok. (Details: {str(e)})"
+            print(f"[LLM] API call failed ({self.provider}/{self.model_name}): {e}")
+            return f"[LLM ERROR] {str(e)}"
 
+
+# Keep the old class name as an alias for backward compatibility
+class GrokLLMWrapper(MultiLLMWrapper):
+    """Backward-compatible alias. Now routes through MultiLLMWrapper."""
+    def __init__(self) -> None:
+        super().__init__()
+
+
+# ============================================================
+# AGENT ORCHESTRATOR
+# ============================================================
 
 class AgentOrchestrator:
     """
-    Central orchestrator that coordinates all AI agents
-    Manages agent communication, task routing, and workflows
+    Central orchestrator that coordinates all AI agents.
+    Manages agent communication, task routing, and workflows.
     """
 
     def __init__(self):
-        # Initialize LLM (placeholder - use actual LLM client)
         self.llm = self._init_llm()
 
-        # Initialize all agents
-        self.lead_agent = LeadQualificationAgent(llm=self.llm)
-        self.email_agent = EmailIntelligenceAgent(llm=self.llm)
-        self.sales_agent = SalesPipelineAgent(llm=self.llm)
+        self.lead_agent    = LeadQualificationAgent(llm=self.llm)
+        self.email_agent   = EmailIntelligenceAgent(llm=self.llm)
+        self.sales_agent   = SalesPipelineAgent(llm=self.llm)
         self.success_agent = CustomerSuccessAgent(llm=self.llm)
         self.meeting_agent = MeetingSchedulerAgent(llm=self.llm)
         self.analytics_agent = AnalyticsAgent(llm=self.llm)
@@ -68,22 +168,38 @@ class AgentOrchestrator:
         self.agents = {
             "lead_qualification": self.lead_agent,
             "email_intelligence": self.email_agent,
-            "sales_pipeline": self.sales_agent,
-            "customer_success": self.success_agent,
-            "meeting_scheduler": self.meeting_agent,
-            "analytics": self.analytics_agent,
-            "ask_crm": AskCRMAgent(llm=self.llm)
+            "sales_pipeline":     self.sales_agent,
+            "customer_success":   self.success_agent,
+            "meeting_scheduler":  self.meeting_agent,
+            "analytics":          self.analytics_agent,
+            "ask_crm":            AskCRMAgent(llm=self.llm),
         }
 
-    def _init_llm(self):
-        """Initialize LLM client using Grok"""
-        return GrokLLMWrapper()
+    def _init_llm(self) -> MultiLLMWrapper:
+        return MultiLLMWrapper()
 
-    def get_agent_status(self) -> Dict[str, str]:
-        """Get status of all agents"""
+    def get_agent_status(self) -> Dict[str, Any]:
         return {
-            name: "active" for name in self.agents.keys()
+            name: {
+                "status": "active",
+                "provider": self.llm.provider,
+                "model": self.llm.model_name,
+            }
+            for name in self.agents.keys()
         }
+
+    def get_llm_info(self) -> Dict[str, str]:
+        return {
+            "provider": self.llm.provider,
+            "model": self.llm.model_name,
+        }
+
+    def switch_model(self, model_name: str) -> Dict[str, str]:
+        self.llm.switch_model(model_name)
+        # Propagate the new LLM instance to all agents
+        for agent in self.agents.values():
+            agent.llm = self.llm
+        return self.get_llm_info()
 
     # ========================================================================
     # WORKFLOW: New Lead Processing
@@ -97,7 +213,6 @@ class AgentOrchestrator:
         3. Meeting Scheduler Agent proposes meeting times
         """
 
-        # Step 1: Qualify lead
         steps = ["🔍 Agent 1: Identifying lead intent and extracting business criteria..."]
         qualification_result = await self.lead_agent.execute({
             "lead_data": lead_data,
@@ -108,38 +223,49 @@ class AgentOrchestrator:
 
         # Save to database
         from database.models import Contact
-        contact = Contact(
-            email=lead_data.get("email"),
-            first_name=lead_data.get("first_name"),
-            last_name=lead_data.get("last_name"),
-            job_title=lead_data.get("job_title"),
-            lead_score=qualification_result.get("score", 0),
-            lead_status=qualification_result.get("routing", {}).get("team", "nurture"),
-            enrichment_data=qualification_result.get("enriched_data")
-        )
-        db.add(contact)
-        db.commit()
+        existing = None
+        try:
+            if db:
+                existing = db.query(Contact).filter(
+                    Contact.email == lead_data.get("email")
+                ).first()
+        except Exception:
+            pass
 
-        # Step 2: Draft welcome email (if high score)
+        if not existing:
+            try:
+                contact = Contact(
+                    email=lead_data.get("email"),
+                    first_name=lead_data.get("first_name"),
+                    last_name=lead_data.get("last_name"),
+                    job_title=lead_data.get("job_title"),
+                    lead_score=qualification_result.get("score", 0),
+                    lead_status=qualification_result.get("routing", {}).get("team", "nurture"),
+                    enrichment_data=qualification_result.get("enriched_data"),
+                )
+                db.add(contact)
+                db.commit()
+            except Exception as e:
+                print(f"[Orchestrator] Could not save contact: {e}")
+
         if qualification_result.get("score", 0) >= 70:
             steps.append("📧 Agent 2: High Score detected! Drafting personalized welcome sequence...")
             email_task = {
                 "email_data": {
                     "from": lead_data.get("email"),
                     "body": f"New high-value lead: {lead_data.get('first_name')}",
-                    "subject": "Welcome"
+                    "subject": "Welcome",
                 }
             }
             await self.email_agent.execute(email_task)
             steps.append("✨ Agent 2: Personalized email draft created and queued for review.")
 
-        # Step 3: Suggest meeting (if very high score)
         if qualification_result.get("score", 0) >= 80:
             steps.append("📅 Agent 3: Strategic lead priority! Proposing executive meeting times...")
             meeting_task = {
                 "action": "suggest_times",
                 "attendees": [lead_data.get("email")],
-                "duration": 30
+                "duration": 30,
             }
             await self.meeting_agent.execute(meeting_task)
             steps.append("🎯 Agent 3: Optimal meeting windows identified and shared.")
@@ -159,31 +285,30 @@ class AgentOrchestrator:
         3. Create activity record
         """
 
-        # Analyze email
         analysis_result = await self.email_agent.execute({
             "email_data": email_data
         })
 
-        # Save to database
         from database.models import Email
-        email = Email(
-            from_email=email_data.get("from"),
-            to_email=email_data.get("to"),
-            subject=email_data.get("subject"),
-            body=email_data.get("body"),
-            direction="inbound",
-            sentiment=analysis_result.get("sentiment", {}).get("label"),
-            sentiment_score=analysis_result.get("sentiment", {}).get("score"),
-            category=analysis_result.get("category"),
-            priority=analysis_result.get("priority"),
-            draft_response=analysis_result.get("draft_response")
-        )
-        db.add(email)
-        db.commit()
+        try:
+            email = Email(
+                from_email=email_data.get("from"),
+                to_email=email_data.get("to"),
+                subject=email_data.get("subject"),
+                body=email_data.get("body"),
+                direction="inbound",
+                sentiment=analysis_result.get("sentiment", {}).get("label"),
+                sentiment_score=analysis_result.get("sentiment", {}).get("score"),
+                category=analysis_result.get("category"),
+                priority=analysis_result.get("priority"),
+                draft_response=analysis_result.get("draft_response"),
+            )
+            db.add(email)
+            db.commit()
+        except Exception as e:
+            print(f"[Orchestrator] Could not save email: {e}")
 
-        # If negative, alert customer success
         if analysis_result.get("sentiment", {}).get("score", 5) <= 3:
-            # Trigger customer success workflow
             print(f"ALERT: Negative email from {email_data.get('from')}")
 
         return analysis_result
@@ -200,28 +325,29 @@ class AgentOrchestrator:
         3. Update deal record with insights
         """
 
-        # Analyze deal
         analysis_result = await self.sales_agent.execute({
             "deal_id": deal_id,
-            "action": "analyze"
+            "action": "analyze",
+            "db": db,
         })
 
-        # Update deal in database
         from database.models import Deal
-        deal = db.query(Deal).filter(Deal.id == deal_id).first()
-        if deal:
-            deal.health_score = analysis_result.get("health_score", 50)
-            deal.is_stalled = analysis_result.get("is_stalled", False)
-            deal.risk_factors = analysis_result.get("risk_factors", [])
-            db.commit()
+        try:
+            deal = db.query(Deal).filter(Deal.id == deal_id).first()
+            if deal:
+                deal.health_score = analysis_result.get("health_score", 50)
+                deal.is_stalled   = analysis_result.get("is_stalled", False)
+                deal.risk_factors = analysis_result.get("risk_factors", [])
+                db.commit()
+        except Exception as e:
+            print(f"[Orchestrator] Could not update deal: {e}")
 
-        # If stalled, schedule follow-up
         if analysis_result.get("is_stalled"):
             meeting_task = {
                 "action": "schedule",
                 "meeting_type": "follow_up",
-                "attendees": [deal.contact.email] if deal.contact else [],
-                "subject": f"Follow-up: {deal.name}"
+                "attendees": [],
+                "subject": f"Follow-up: {analysis_result.get('name', deal_id)}",
             }
             await self.meeting_agent.execute(meeting_task)
 
@@ -239,25 +365,24 @@ class AgentOrchestrator:
         3. Identify upsell opportunities
         """
 
-        # Monitor customer
         monitoring_result = await self.success_agent.execute({
             "customer_id": customer_id,
-            "action": "monitor"
+            "action": "monitor",
         })
 
-        # Update customer in database
         from database.models import Customer
-        customer = db.query(Customer).filter(Customer.id == customer_id).first()
-        if customer:
-            customer.health_score = monitoring_result.get("health_score", 50)
-            customer.churn_risk = monitoring_result.get("churn_risk", {}).get("level", "low")
-            customer.churn_probability = monitoring_result.get("churn_risk", {}).get("probability", 0)
-            db.commit()
+        try:
+            customer = db.query(Customer).filter(Customer.id == customer_id).first()
+            if customer:
+                customer.health_score      = monitoring_result.get("health_score", 50)
+                customer.churn_risk        = monitoring_result.get("churn_risk", {}).get("level", "low")
+                customer.churn_probability = monitoring_result.get("churn_risk", {}).get("probability", 0)
+                db.commit()
+        except Exception as e:
+            print(f"[Orchestrator] Could not update customer: {e}")
 
-        # If high churn risk, alert team
         if monitoring_result.get("churn_risk", {}).get("level") in ["high", "critical"]:
             print(f"ALERT: High churn risk for customer {customer_id}")
-            # Could trigger email, Slack notification, etc.
 
         return monitoring_result
 
@@ -273,26 +398,27 @@ class AgentOrchestrator:
         3. Generates prep materials
         """
 
-        # Schedule meeting
         meeting_result = await self.meeting_agent.execute({
             "action": "schedule",
-            **meeting_request
+            **meeting_request,
         })
 
-        # Save to database
         from database.models import Meeting
-        meeting = Meeting(
-            title=meeting_result.get("subject"),
-            meeting_type=meeting_result.get("type"),
-            scheduled_at=meeting_result.get("scheduled_time"),
-            duration_minutes=meeting_result.get("duration_minutes"),
-            attendees=meeting_result.get("attendees"),
-            agenda=meeting_result.get("agenda"),
-            prep_materials=meeting_result.get("prep_materials"),
-            status="scheduled"
-        )
-        db.add(meeting)
-        db.commit()
+        try:
+            meeting = Meeting(
+                title=meeting_result.get("subject") or meeting_request.get("title"),
+                meeting_type=meeting_result.get("type"),
+                scheduled_at=meeting_result.get("scheduled_time"),
+                duration_minutes=meeting_result.get("duration_minutes"),
+                attendees=meeting_result.get("attendees"),
+                agenda=meeting_result.get("agenda"),
+                prep_materials=meeting_result.get("prep_materials"),
+                status="scheduled",
+            )
+            db.add(meeting)
+            db.commit()
+        except Exception as e:
+            print(f"[Orchestrator] Could not save meeting: {e}")
 
         return meeting_result
 
@@ -310,23 +436,27 @@ class AgentOrchestrator:
 
         dashboard = await self.analytics_agent.execute({
             "action": "dashboard",
-            "category": category
+            "category": category,
+            "db": db,
         })
 
         return dashboard
+
+    # ========================================================================
+    # UNIFIED QUERY HANDLER
+    # ========================================================================
 
     async def handle_user_query(self, prompt: str, db: Session) -> Dict[str, Any]:
         """
         Unified entry point for user natural language queries.
         1. Uses LLM to classify intent
-        2. Routes to appropriate agent
-        3. Aggregates results for the frontend
+        2. Routes to AskCRMAgent for SQL generation + execution
+        3. Returns data, SQL, steps, and summary
         """
-        steps = []
+        steps: List[str] = []
         prompt_lower = prompt.lower()
-        steps.append("🔍 Agent 1: Identifying user intent and extracting entities...")
-        
-        # 1. Intent Classification
+        steps.append("🔍 Classifying user intent and extracting entities...")
+
         routing_prompt = f"""
         You are an AI CRM Director. Classify the user query into ONE of these categories:
         - "analytics": Metrics, KPIs, trends, total counts, growth, overview.
@@ -338,44 +468,34 @@ class AgentOrchestrator:
 
         Return ONLY the word of the category. No punctuation.
         """
-        
+
         category = "analytics"
         try:
-            category = await self.llm.generate(routing_prompt)
-            category = category.strip().lower()
-            steps.append(f"🎯 Intent identified as: {category.upper()}. Dispatching appropriate CRM Agent.")
+            category = (await self.llm.generate(routing_prompt)).strip().lower()
+            steps.append(f"🎯 Intent identified as: {category.upper()}. Dispatching CRM SQL Agent.")
         except Exception as e:
-            print(f"ERROR: Intent classification failed: {e}")
-            steps.append("⚠️ Intent classification ambiguous, defaulting to Analytics Agent.")
+            steps.append("⚠️ Intent classification ambiguous, defaulting to SQL Agent.")
 
-        # Initialize response variables
-        data = []
-        sql = ""
+        data: List[Any] = []
+        sql  = ""
         summary = ""
-        charts = []
+        charts: List[Any] = []
 
         try:
-            # 2. Route to appropriate agent logic (Simplified for now, delegated to Ask CRM for data)
-            async def run_ask_crm_workflow():
-                 steps.append("🤖 Initializing Ask CRM Agent for complex data extraction...")
-                 ask_agent = self.agents["ask_crm"]
-                 res = await ask_agent.execute({"prompt": prompt, "db": db})
-                 return res
-                 
-            # If the user specifically asked for a custom view, trigger the Ask CRM Agent
-            if category in ["sales", "leads", "customers"] or any(word in prompt_lower for word in ["list", "find", "search", "show", "custom"]):
-                 ask_res = await run_ask_crm_workflow()
-                 data = ask_res.get("data", [])
-                 sql = ask_res.get("sql", "")
-                 summary = ask_res.get("summary", "")
-                 steps.extend(ask_res.get("steps", []))
+            steps.append("🤖 Initializing Ask CRM Agent for SQL generation & execution...")
+            ask_agent = self.agents["ask_crm"]
+            ask_agent.llm = self.llm          # ensure latest LLM
+            res = await ask_agent.execute({"prompt": prompt, "db": db})
+            data    = res.get("data", [])
+            sql     = res.get("sql", "")
+            summary = res.get("summary", "")
+            steps.extend(res.get("steps", []))
 
-            # 4. Fallback Results for Summary if missing
             if not summary:
-                steps.append("🧩 Reasoning Agent synthesizing final narrative response...")
+                steps.append("🧩 Synthesizing narrative response...")
                 summary_prompt = f"""
                 Summarize the following CRM data for the user in a professional, concise, and helpful tone.
-                Data Snippet: {str(data)[:200]}
+                Data: {str(data)[:400]}
                 Query: "{prompt}"
                 Return ONLY the summary text (max 2 sentences).
                 """
@@ -388,22 +508,25 @@ class AgentOrchestrator:
                 "workflow_steps": steps,
                 "dashboard_config": {
                     "charts": charts,
-                    "suggested_queries": ["Show me stalled deals", "Qualify new leads", "Customer health report"]
+                    "suggested_queries": [
+                        "Show me stalled deals",
+                        "Top customers by MRR",
+                        "Which agents ran today?"
+                    ],
                 },
                 "metadata": {
                     "row_count": len(data),
                     "sql_used": sql,
-                    "execution_time_ms": 200
-                }
+                    "execution_time_ms": 200,
+                },
             }
 
         except Exception as e:
-            print(f"ERROR: Orchestration failed: {e}")
+            print(f"[Orchestrator] Query failed: {e}")
             return {
                 "status": "error",
-                "message": f"Failed to process query: {str(e)}"
+                "message": f"Failed to process query: {str(e)}",
             }
-
 
     # ========================================================================
     # AUTOMATED WORKFLOWS (Run Periodically)
@@ -412,7 +535,6 @@ class AgentOrchestrator:
     async def run_daily_workflows(self, db: Session):
         """Run daily automated workflows"""
 
-        # 1. Check all deals for stalled status
         from database.models import Deal
         active_deals = db.query(Deal).filter(
             Deal.stage.in_(['prospecting', 'qualification', 'proposal', 'negotiation'])
@@ -421,17 +543,15 @@ class AgentOrchestrator:
         for deal in active_deals:
             await self.analyze_deal(str(deal.id), db)
 
-        # 2. Monitor all customers
         from database.models import Customer
         customers = db.query(Customer).all()
 
         for customer in customers:
             await self.monitor_customer(str(customer.id), db)
 
-        # 3. Generate daily metrics
         await self.analytics_agent.execute({
             "action": "report",
-            "report_type": "weekly_sales"
+            "report_type": "weekly_sales",
         })
 
         print("Daily workflows completed")
@@ -439,16 +559,14 @@ class AgentOrchestrator:
     async def run_weekly_workflows(self, db: Session):
         """Run weekly automated workflows"""
 
-        # Generate executive report
-        report = await self.analytics_agent.execute({
+        await self.analytics_agent.execute({
             "action": "report",
-            "report_type": "monthly_executive"
+            "report_type": "monthly_executive",
         })
 
-        # Analyze pipeline health
-        pipeline_health = await self.analytics_agent.execute({
+        await self.analytics_agent.execute({
             "action": "report",
-            "report_type": "pipeline_health"
+            "report_type": "pipeline_health",
         })
 
         print("Weekly workflows completed")
