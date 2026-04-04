@@ -1,0 +1,229 @@
+'use client';
+
+import { useState, useCallback } from 'react';
+import { Calendar, Clock, Users, Check } from 'lucide-react';
+import AgentPageLayout from '@/components/AgentPageLayout';
+import type { MeetingSchedulerResult } from '@/types';
+
+const COLOR = '#bf5af2';
+
+const STEPS = [
+  { name: 'Parsing meeting request', output: 'Request parsed · Type: Executive Demo · Duration: 60 min' },
+  { name: 'Checking attendee calendars', output: '3 attendees found · 2 calendars fetched · 1 external' },
+  { name: 'Finding available slots', output: '8 mutual availability windows identified this week' },
+  { name: 'Selecting optimal time', output: 'Optimal slot: Tue Apr 8, 2:00 PM — score: 94/100' },
+  { name: 'Generating meeting agenda', output: '5-point agenda created based on meeting type and context' },
+  { name: 'Creating prep materials', output: 'Talking points, success criteria, and collateral assembled' },
+  { name: 'Setting reminders', output: 'Reminders set: 24h, 1h before · Calendar invites queued' },
+];
+
+const EXAMPLES = [
+  {
+    label: 'Executive Demo',
+    data: { title: 'Enterprise CRM Demo', meeting_type: 'demo', duration: '60', attendees: 'cto@techcorp.com, sales@yourcrm.com', notes: 'Prospect is evaluating 3 CRMs. Focus on AI features and ROI.' },
+  },
+  {
+    label: 'QBR Meeting',
+    data: { title: 'Q1 Business Review', meeting_type: 'qbr', duration: '90', attendees: 'cso@acmecorp.com, csm@yourcrm.com', notes: 'Account is at churn risk. Needs to see value before renewal.' },
+  },
+  {
+    label: 'Deal Follow-up',
+    data: { title: 'Proposal Follow-up Call', meeting_type: 'follow_up', duration: '30', attendees: 'vp@globex.com, ae@yourcrm.com', notes: 'Deal stalled 14 days. Re-engage with new ROI calculator.' },
+  },
+];
+
+const MOCK_RESULT: MeetingSchedulerResult = {
+  scheduled_time: 'Tuesday, April 8, 2026 · 2:00 PM EST',
+  duration_minutes: 60,
+  meeting_type: 'Executive Demo',
+  attendees: ['john.smith@techcorp.com', 'sales@yourcrm.com', 'se@yourcrm.com'],
+  agenda: [
+    { item: 'Introductions and agenda overview', duration_minutes: 5 },
+    { item: 'Company overview & pain point discovery', duration_minutes: 10 },
+    { item: 'AI-powered CRM product demo', duration_minutes: 25 },
+    { item: 'ROI analysis and competitive positioning', duration_minutes: 12 },
+    { item: 'Q&A and next steps', duration_minutes: 8 },
+  ],
+  prep_materials: {
+    talking_points: [
+      `Lead scoring reduces manual effort by 70% — mention TechCorp's current process`,
+      'Reference case study: SaaSCo increased pipeline velocity by 35%',
+      'Emphasize AI email intelligence — 3hr faster response times',
+    ],
+    success_criteria: [
+      'Prospect agrees to a POC or pilot program',
+      'Identify budget authority and timeline',
+      'Get commitment for next meeting with full team',
+    ],
+    collateral: ['Enterprise pitch deck (v5)', 'ROI calculator spreadsheet', 'Security & compliance whitepaper'],
+  },
+  follow_up_tasks: [
+    'Send meeting confirmation with calendar invite',
+    'Share pre-read materials 24 hours before',
+    'Prepare live demo environment with TechCorp branding',
+    'Brief Solutions Engineer on technical requirements',
+  ],
+};
+
+function getInitials(email: string): string {
+  const name = email.split('@')[0].replace(/[._]/g, ' ');
+  return name.split(' ').map((w) => w[0]?.toUpperCase() || '').slice(0, 2).join('');
+}
+
+export default function MeetingsPage() {
+  const [result, setResult]         = useState<MeetingSchedulerResult | null>(null);
+  const [isComplete, setIsComplete] = useState(false);
+  const [error, setError]           = useState<string | null>(null);
+  const [doneItems, setDoneItems]   = useState<Set<number>>(new Set());
+
+  const handleRun = useCallback(async (formData: Record<string, string>) => {
+    setError(null);
+    setIsComplete(false);
+    setDoneItems(new Set());
+    try {
+      await fetch('http://localhost:8000/api/agents/schedule-meeting', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData),
+      }).catch(() => null);
+    } catch { /* ignore */ }
+    await new Promise((r) => setTimeout(r, STEPS.length * 500 + 600));
+    setResult({ ...MOCK_RESULT, meeting_type: formData.meeting_type || MOCK_RESULT.meeting_type });
+    setIsComplete(true);
+  }, []);
+
+  const toggleItem = (i: number) => {
+    setDoneItems((prev) => { const next = new Set(prev); if (next.has(i)) next.delete(i); else next.add(i); return next; });
+  };
+
+  return (
+    <AgentPageLayout
+      agentName="Meeting Scheduler"
+      agentDescription="Intelligently schedules meetings, generates agendas, assembles prep materials, and creates follow-up tasks."
+      agentColor={COLOR}
+      agentEmoji="📅"
+      formFields={[
+        { key: 'title', label: 'Meeting Title', placeholder: 'Enterprise CRM Demo' },
+        { key: 'meeting_type', label: 'Meeting Type', type: 'select', options: ['demo', 'follow_up', 'qbr', 'onboarding', 'discovery'] },
+        { key: 'duration', label: 'Duration (minutes)', placeholder: '60' },
+        { key: 'attendees', label: 'Attendees (email, comma separated)', type: 'textarea', placeholder: 'john@company.com, sarah@yourcrm.com', rows: 2 },
+        { key: 'notes', label: 'Context & Notes', type: 'textarea', placeholder: 'Relevant context for preparing this meeting...', rows: 3 },
+      ]}
+      defaultValues={EXAMPLES[0].data}
+      examples={EXAMPLES}
+      steps={STEPS}
+      onRun={handleRun}
+      error={error}
+      isComplete={isComplete}
+      resultNode={result && (
+        <div className="space-y-4">
+          {/* Scheduled Time */}
+          <div className="apple-card" style={{ background: `linear-gradient(135deg, ${COLOR}10, ${COLOR}05)`, borderColor: `${COLOR}30` }}>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: COLOR }}>
+                <Calendar size={20} color="#fff" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Scheduled Meeting</p>
+                <p className="font-700 text-base" style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{result.scheduled_time}</p>
+              </div>
+            </div>
+            <div className="flex gap-3 mt-3">
+              <span className="badge badge-purple"><Clock size={10} /> {result.duration_minutes} minutes</span>
+              <span className="badge badge-purple">{result.meeting_type}</span>
+            </div>
+          </div>
+
+          {/* Attendees */}
+          <div className="apple-card">
+            <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>
+              <Users size={12} className="inline mr-1" />Attendees
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {result.attendees.map((a) => (
+                <div key={a} className="flex items-center gap-2 px-3 py-1.5 rounded-full"
+                  style={{ background: `${COLOR}12`, border: `1px solid ${COLOR}25` }}>
+                  <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white"
+                    style={{ background: COLOR, fontSize: 10 }}>
+                    {getInitials(a)}
+                  </div>
+                  <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{a}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Agenda */}
+          <div className="apple-card">
+            <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Meeting Agenda</p>
+            <div className="space-y-2">
+              {result.agenda.map((item, i) => (
+                <div key={i} className="flex items-center gap-3 p-2 rounded-lg" style={{ background: 'var(--bg-input)' }}>
+                  <div className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
+                    style={{ background: COLOR }}>
+                    {i + 1}
+                  </div>
+                  <span className="text-sm flex-1" style={{ color: 'var(--text-secondary)' }}>{item.item}</span>
+                  <span className="badge badge-purple" style={{ fontSize: 10, padding: '2px 8px' }}>{item.duration_minutes}m</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Prep Materials */}
+          <div className="apple-card">
+            <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Prep Materials</p>
+            <div className="space-y-4">
+              <div>
+                <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-secondary)' }}>Talking Points</p>
+                {result.prep_materials.talking_points.map((t, i) => (
+                  <div key={i} className="flex items-start gap-2 mb-1.5">
+                    <div className="w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0" style={{ background: COLOR }} />
+                    <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{t}</span>
+                  </div>
+                ))}
+              </div>
+              <div>
+                <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-secondary)' }}>Success Criteria</p>
+                {result.prep_materials.success_criteria.map((s, i) => (
+                  <div key={i} className="flex items-start gap-2 mb-1.5">
+                    <Check size={13} color="#34c759" className="flex-shrink-0 mt-0.5" />
+                    <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{s}</span>
+                  </div>
+                ))}
+              </div>
+              <div>
+                <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-secondary)' }}>Collateral</p>
+                <div className="flex flex-wrap gap-2">
+                  {result.prep_materials.collateral.map((c, i) => (
+                    <span key={i} className="chip" style={{ fontSize: 12, cursor: 'default' }}>📎 {c}</span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Follow-up Tasks */}
+          <div className="apple-card">
+            <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Follow-up Tasks</p>
+            <div className="space-y-2">
+              {result.follow_up_tasks.map((t, i) => (
+                <button key={i} className="flex items-center gap-3 w-full text-left p-2 rounded-lg transition-all"
+                  onClick={() => toggleItem(i)}
+                  style={{ background: doneItems.has(i) ? 'rgba(52,199,89,0.06)' : 'var(--bg-input)', border: `1px solid ${doneItems.has(i) ? 'rgba(52,199,89,0.2)' : 'transparent'}` }}>
+                  <div className="w-4 h-4 rounded flex items-center justify-center flex-shrink-0"
+                    style={{ background: doneItems.has(i) ? '#34c759' : 'transparent', border: `1.5px solid ${doneItems.has(i) ? '#34c759' : 'var(--text-tertiary)'}` }}>
+                    {doneItems.has(i) && <Check size={10} color="#fff" />}
+                  </div>
+                  <span className="text-sm" style={{ color: doneItems.has(i) ? 'var(--text-tertiary)' : 'var(--text-secondary)', textDecoration: doneItems.has(i) ? 'line-through' : 'none' }}>
+                    {t}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    />
+  );
+}

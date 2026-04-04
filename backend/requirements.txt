@@ -12,6 +12,7 @@ alembic==1.12.1
 # AI/ML
 langchain==0.0.340
 google-genai==0.3.0
+openai==1.6.1
 tiktoken==0.5.1
 
 # Vector Database (for agent memory)

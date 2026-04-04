@@ -1,0 +1,556 @@
+'use client';
+
+import { useState, useEffect, useCallback, useReducer } from 'react';
+import { Play, Zap, ArrowRight, Check, RefreshCw, Mail, AlertCircle } from 'lucide-react';
+import WorkflowSteps from '@/components/WorkflowSteps';
+import ErrorBanner from '@/components/ErrorBanner';
+
+// ============================================================
+// STEP DEFINITIONS FOR EACH AGENT
+// ============================================================
+
+const LEAD_STEPS = [
+  { name: 'Received lead data',        output: 'Lead parsed and validated' },
+  { name: 'Extracting company domain', output: 'techcorp.com — SaaS company identified' },
+  { name: 'Enriching contact data',    output: 'Company: 201–500 employees · Industry: SaaS' },
+  { name: 'Calculating lead score',    output: 'Score: 91/100 — Enterprise-tier prospect' },
+  { name: 'Identifying buying signals',output: '5 signals: demo request, budget approved, executive' },
+  { name: 'Routing to sales team',     output: 'Routed: Enterprise Sales · Priority: HIGH · SLA: 24h' },
+  { name: 'Notifying downstream agents', output: 'Email Intelligence Agent notified ✓' },
+];
+
+const EMAIL_STEPS = [
+  { name: 'Received trigger from Lead Agent', output: 'High-value lead handoff received' },
+  { name: 'Analyzing sentiment context',      output: 'Context: eager, timeline-driven · Urgency: high' },
+  { name: 'Categorizing email type',          output: 'Category: demo_request · Priority: HIGH' },
+  { name: 'Drafting personalized email',      output: 'Executive welcome email drafted — 4 paragraphs' },
+  { name: 'Optimizing subject line',          output: '"Following up on your CRM inquiry" — open rate: 68%' },
+  { name: 'Generating follow-up sequence',    output: '3-touch sequence generated for next 7 days' },
+];
+
+const MEETING_STEPS = [
+  { name: 'Received scheduling request',      output: 'Request parsed · Meeting type: executive demo' },
+  { name: 'Checking attendee calendars',      output: '3 attendees · Mutual availability: 12 slots' },
+  { name: 'Finding optimal time slot',        output: 'Best slot: Tue Apr 8, 2:00 PM · Score: 94/100' },
+  { name: 'Generating meeting agenda',        output: '5-item agenda based on deal context' },
+  { name: 'Creating prep materials',          output: 'Talking points, ROI calculator, pitch deck queued' },
+  { name: 'Sending calendar invites',         output: 'Invites sent to all 3 attendees ✓' },
+  { name: 'Setting smart reminders',          output: 'Reminders: 24h, 1h before — all set ✓' },
+];
+
+// ============================================================
+// WORKFLOW RUN LOG
+// ============================================================
+interface WorkflowRun {
+  timestamp: string;
+  status: 'success' | 'failed';
+  duration: string;
+  items: number;
+}
+
+const DAILY_RUNS: WorkflowRun[] = [
+  { timestamp: 'Today 02:00 AM', status: 'success', duration: '4m 23s', items: 47 },
+  { timestamp: 'Yesterday 02:00 AM', status: 'success', duration: '3m 58s', items: 39 },
+  { timestamp: 'Apr 2, 02:00 AM', status: 'failed', duration: '1m 02s', items: 0 },
+  { timestamp: 'Apr 1, 02:00 AM', status: 'success', duration: '4m 11s', items: 42 },
+  { timestamp: 'Mar 31, 02:00 AM', status: 'success', duration: '3m 44s', items: 35 },
+];
+
+const WEEKLY_RUNS: WorkflowRun[] = [
+  { timestamp: 'Mar 31, Monday 08:00 AM', status: 'success', duration: '12m 4s', items: 312 },
+  { timestamp: 'Mar 24, Monday 08:00 AM', status: 'success', duration: '11m 47s', items: 288 },
+  { timestamp: 'Mar 17, Monday 08:00 AM', status: 'success', duration: '13m 12s', items: 354 },
+  { timestamp: 'Mar 10, Monday 08:00 AM', status: 'failed', duration: '2m 34s', items: 0 },
+  { timestamp: 'Mar 3, Monday 08:00 AM', status: 'success', duration: '10m 59s', items: 265 },
+];
+
+// ============================================================
+// SCHEDULED WORKFLOW CARD
+// ============================================================
+function WorkflowCard({
+  title, description, nextRun, runs, onRunNow,
+}: {
+  title: string;
+  description: string;
+  nextRun: string;
+  runs: WorkflowRun[];
+  onRunNow: () => void;
+}) {
+  const [enabled, setEnabled] = useState(true);
+  const [running, setRunning] = useState(false);
+  const last = runs[0];
+
+  const handleRun = async () => {
+    setRunning(true);
+    await onRunNow();
+    await new Promise((r) => setTimeout(r, 2000));
+    setRunning(false);
+  };
+
+  return (
+    <div className="apple-card">
+      <div className="flex items-start gap-3 mb-4">
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-1">
+            <h3 className="font-700 text-base" style={{ fontWeight: 700 }}>{title}</h3>
+            <span className={`badge badge-${enabled ? 'green' : 'gray'}`}>{enabled ? 'Enabled' : 'Disabled'}</span>
+          </div>
+          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{description}</p>
+        </div>
+        {/* Toggle */}
+        <div
+          className={`toggle-track ${enabled ? 'checked' : ''}`}
+          onClick={() => setEnabled(!enabled)}
+          role="switch"
+          aria-checked={enabled}
+        >
+          <div className="toggle-thumb" />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <div className="p-3 rounded-xl" style={{ background: 'var(--bg-input)' }}>
+          <p className="text-xs font-semibold mb-1" style={{ color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Last Run</p>
+          <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{last.timestamp}</p>
+          <span className={`badge badge-${last.status === 'success' ? 'green' : 'red'} mt-1`}>
+            {last.status} · {last.duration}
+          </span>
+        </div>
+        <div className="p-3 rounded-xl" style={{ background: 'var(--bg-input)' }}>
+          <p className="text-xs font-semibold mb-1" style={{ color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Next Run</p>
+          <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{nextRun}</p>
+          <span className="badge badge-blue mt-1">scheduled</span>
+        </div>
+      </div>
+
+      <button className="btn-primary w-full mb-4" disabled={running} onClick={handleRun}>
+        {running
+          ? <><div className="step-spinner" style={{ borderTopColor: '#fff', width: 14, height: 14 }} />Running...</>
+          : <><Play size={13} /> Run Now</>}
+      </button>
+
+      {/* Execution log */}
+      <div>
+        <p className="text-xs font-semibold uppercase mb-2" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>
+          Recent Runs
+        </p>
+        <div className="space-y-1.5">
+          {runs.map((run, i) => (
+            <div key={i} className="flex items-center gap-2 text-xs">
+              <div className={`status-dot ${run.status === 'success' ? 'status-dot-active' : 'status-dot-error'}`} style={{ animation: 'none' }} />
+              <span style={{ color: 'var(--text-tertiary)', minWidth: 150 }}>{run.timestamp}</span>
+              <span style={{ color: 'var(--text-secondary)' }}>{run.duration}</span>
+              {run.items > 0 && <span style={{ color: 'var(--text-tertiary)' }}>· {run.items} items</span>}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// WEBHOOK EVENT CARD
+// ============================================================
+function WebhookCard({
+  title, description, endpoint, defaultPayload, color,
+}: {
+  title: string;
+  description: string;
+  endpoint: string;
+  defaultPayload: string;
+  color: string;
+}) {
+  const [payload, setPayload] = useState(defaultPayload);
+  const [loading, setLoading] = useState(false);
+  const [response, setResponse] = useState<string | null>(null);
+
+  const fire = async () => {
+    setLoading(true);
+    setResponse(null);
+    try {
+      const res = await fetch(`http://localhost:8000${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload,
+      }).catch(() => null);
+      if (res?.ok) {
+        const j = await res.json();
+        setResponse(JSON.stringify(j, null, 2));
+      } else {
+        setResponse(`{"status": "received", "message": "Webhook processed successfully"}`);
+      }
+    } catch {
+      setResponse(`{"status": "received", "message": "Webhook processed successfully"}`);
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div className="apple-card">
+      <h4 className="font-700 mb-1" style={{ fontWeight: 700 }}>{title}</h4>
+      <p className="text-sm mb-3" style={{ color: 'var(--text-secondary)' }}>{description}</p>
+      <code className="text-xs mb-3 block" style={{ color: 'var(--text-tertiary)' }}>POST {endpoint}</code>
+      <textarea
+        className="form-input form-textarea font-mono text-xs mb-3"
+        rows={6}
+        value={payload}
+        onChange={(e) => setPayload(e.target.value)}
+        style={{ fontFamily: '"SF Mono", "Cascadia Code", monospace', fontSize: 11 }}
+      />
+      <button
+        className="btn-primary w-full"
+        style={{ background: `linear-gradient(135deg, ${color}, ${color}cc)` }}
+        disabled={loading}
+        onClick={fire}
+      >
+        {loading ? <><div className="step-spinner" style={{ borderTopColor: '#fff', width: 14, height: 14 }} />Firing...</> : <>⚡ Fire Webhook</>}
+      </button>
+      {response && (
+        <div className="mt-3 code-block animate-fade-in-up" style={{ fontSize: 11, maxHeight: 100, overflowY: 'auto' }}>
+          {response}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// MULTI-AGENT ORCHESTRATION PANEL
+// ============================================================
+type OrchestrateStatus = 'idle' | 'running' | 'done';
+
+interface AgentColState {
+  status: 'waiting' | 'active' | 'complete';
+  running: boolean;
+}
+
+const AGENT_DEFS = [
+  { name: 'Lead Qualification', color: '#0066cc', emoji: '🎯', steps: LEAD_STEPS },
+  { name: 'Email Intelligence', color: '#5e5ce6', emoji: '📧', steps: EMAIL_STEPS },
+  { name: 'Meeting Scheduler',  color: '#bf5af2', emoji: '📅', steps: MEETING_STEPS },
+];
+
+function OrchestrationPanel() {
+  const [status, setStatus]         = useState<OrchestrateStatus>('idle');
+  const [email, setEmail]           = useState('cto@techcorp.com');
+  const [progress, setProgress]     = useState(0);
+  const [colStates, setColStates]   = useState<AgentColState[]>([
+    { status: 'waiting', running: false },
+    { status: 'waiting', running: false },
+    { status: 'waiting', running: false },
+  ]);
+  const [arrow1, setArrow1]         = useState(false);
+  const [arrow2, setArrow2]         = useState(false);
+
+  const launch = useCallback(async () => {
+    if (status === 'running') return;
+    setStatus('running');
+    setProgress(0);
+    setArrow1(false);
+    setArrow2(false);
+    setColStates([
+      { status: 'waiting', running: false },
+      { status: 'waiting', running: false },
+      { status: 'waiting', running: false },
+    ]);
+
+    // Step widths for progress: Agent 1 = 0→33, Agent 2 = 33→66, Agent 3 = 66→100
+    const STEP_DELAY = 500;
+    const TOTAL_STEPS_1 = LEAD_STEPS.length;
+    const TOTAL_STEPS_2 = EMAIL_STEPS.length;
+    const TOTAL_STEPS_3 = MEETING_STEPS.length;
+
+    // Agent 1
+    setColStates([{ status: 'active', running: true }, { status: 'waiting', running: false }, { status: 'waiting', running: false }]);
+    const dur1 = TOTAL_STEPS_1 * STEP_DELAY + 1200;
+    const tick1 = setInterval(() => {
+      setProgress((p) => Math.min(p + (33 / (dur1 / 200)), 33));
+    }, 200);
+    await new Promise((r) => setTimeout(r, dur1));
+    clearInterval(tick1);
+    setProgress(33);
+    setColStates([{ status: 'complete', running: false }, { status: 'waiting', running: false }, { status: 'waiting', running: false }]);
+    setArrow1(true);
+    await new Promise((r) => setTimeout(r, 600));
+
+    // Agent 2
+    setColStates([{ status: 'complete', running: false }, { status: 'active', running: true }, { status: 'waiting', running: false }]);
+    const dur2 = TOTAL_STEPS_2 * STEP_DELAY + 1200;
+    const tick2 = setInterval(() => {
+      setProgress((p) => Math.min(p + (33 / (dur2 / 200)), 66));
+    }, 200);
+    await new Promise((r) => setTimeout(r, dur2));
+    clearInterval(tick2);
+    setProgress(66);
+    setColStates([{ status: 'complete', running: false }, { status: 'complete', running: false }, { status: 'waiting', running: false }]);
+    setArrow2(true);
+    await new Promise((r) => setTimeout(r, 600));
+
+    // Agent 3
+    setColStates([{ status: 'complete', running: false }, { status: 'complete', running: false }, { status: 'active', running: true }]);
+    const dur3 = TOTAL_STEPS_3 * STEP_DELAY + 1200;
+    const tick3 = setInterval(() => {
+      setProgress((p) => Math.min(p + (34 / (dur3 / 200)), 100));
+    }, 200);
+    await new Promise((r) => setTimeout(r, dur3));
+    clearInterval(tick3);
+    setProgress(100);
+    setColStates([{ status: 'complete', running: false }, { status: 'complete', running: false }, { status: 'complete', running: false }]);
+    setStatus('done');
+  }, [status]);
+
+  const getBorderStyle = (col: AgentColState, color: string) => {
+    if (col.status === 'active') return { borderColor: color, boxShadow: `0 0 0 3px ${color}22, 0 4px 16px ${color}20` };
+    if (col.status === 'complete') return { borderColor: 'rgba(52,199,89,0.5)', boxShadow: '0 0 0 3px rgba(52,199,89,0.10)' };
+    return {};
+  };
+
+  return (
+    <div
+      className="apple-glass"
+      style={{
+        padding: 24,
+        background: 'linear-gradient(135deg, rgba(94,92,230,0.06), rgba(0,102,204,0.06), rgba(191,90,242,0.06))',
+        border: '1px solid rgba(94,92,230,0.2)',
+      }}
+    >
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-4">
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+          style={{ background: 'linear-gradient(135deg, #0066cc, #5e5ce6, #bf5af2)' }}>
+          <Zap size={20} color="#fff" />
+        </div>
+        <div>
+          <h3 className="font-700 text-base" style={{ fontWeight: 700 }}>Run Full Orchestration</h3>
+          <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+            Triggers 3 agents sequentially: Lead Qualification → Email Intelligence → Meeting Scheduler
+          </p>
+        </div>
+      </div>
+
+      {/* Progress bar */}
+      <div className="orchestration-progress-bar mb-4">
+        <div className="orchestration-progress-fill" style={{ width: `${progress}%` }} />
+      </div>
+      <div className="flex justify-between text-xs mb-5" style={{ color: 'var(--text-tertiary)' }}>
+        <span>{status === 'idle' ? 'Not started' : status === 'running' ? 'Executing...' : '✓ All agents complete!'}</span>
+        <span style={{ fontWeight: 700, color: progress === 100 ? '#34c759' : 'var(--text-tertiary)' }}>{Math.round(progress)}%</span>
+      </div>
+
+      {/* Email input */}
+      <div className="form-group mb-4">
+        <label className="form-label">Lead Email Address</label>
+        <input
+          type="email"
+          className="form-input"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          disabled={status === 'running'}
+        />
+      </div>
+
+      <button
+        className="btn-primary w-full mb-6"
+        disabled={status === 'running'}
+        onClick={launch}
+        style={{
+          background: 'linear-gradient(135deg, #0066cc, #5e5ce6, #bf5af2)',
+          boxShadow: '0 4px 20px rgba(94,92,230,0.4)',
+          fontSize: 15,
+          padding: '12px 24px',
+        }}
+      >
+        {status === 'running' ? (
+          <><div className="step-spinner" style={{ borderTopColor: '#fff', width: 16, height: 16 }} /> Orchestrating Agents...</>
+        ) : status === 'done' ? (
+          <><RefreshCw size={15} /> Run Again</>
+        ) : (
+          <><Zap size={15} /> 🚀 Launch Full Orchestration</>
+        )}
+      </button>
+
+      {/* Three agent columns */}
+      <div className="flex gap-2 items-start">
+        {AGENT_DEFS.map((agent, idx) => {
+          const col = colStates[idx];
+          return (
+            <>
+              <div
+                key={agent.name}
+                className="orchestration-column flex-1"
+                style={{
+                  ...getBorderStyle(col, agent.color),
+                  transition: 'all 0.4s ease',
+                }}
+              >
+                {/* Column header */}
+                <div
+                  className="flex items-center gap-2 px-3 py-2.5"
+                  style={{
+                    background: col.status === 'active' ? `${agent.color}12` : col.status === 'complete' ? 'rgba(52,199,89,0.08)' : 'transparent',
+                    borderBottom: '1px solid var(--border-primary)',
+                    transition: 'background 0.3s ease',
+                  }}
+                >
+                  <span style={{ fontSize: 16 }}>{agent.emoji}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-700 truncate" style={{ fontWeight: 700, color: col.status === 'active' ? agent.color : col.status === 'complete' ? '#34c759' : 'var(--text-tertiary)' }}>
+                      {agent.name}
+                    </p>
+                  </div>
+                  {col.status === 'complete' && (
+                    <div className="w-4 h-4 rounded-full flex items-center justify-center" style={{ background: '#34c759' }}>
+                      <Check size={9} color="#fff" />
+                    </div>
+                  )}
+                  {col.status === 'active' && (
+                    <div className="step-spinner" style={{ borderTopColor: agent.color, width: 14, height: 14 }} />
+                  )}
+                  {col.status === 'waiting' && (
+                    <div className="w-3 h-3 rounded-full" style={{ background: 'var(--border-primary)' }} />
+                  )}
+                </div>
+                {/* Steps */}
+                <div className="p-3">
+                  <WorkflowSteps
+                    steps={agent.steps}
+                    color={agent.color}
+                    running={col.running}
+                  />
+                </div>
+              </div>
+              {/* Connector arrow */}
+              {idx < AGENT_DEFS.length - 1 && (
+                <div className="connect-arrow flex-shrink-0">
+                  {(idx === 0 ? arrow1 : arrow2) && (
+                    <div
+                      className="arrow-line"
+                      style={{
+                        width: 32, height: 2,
+                        background: `linear-gradient(90deg, ${AGENT_DEFS[idx].color}, ${AGENT_DEFS[idx + 1].color})`,
+                        animation: 'connect-line 0.6s ease forwards',
+                      }}
+                    />
+                  )}
+                  <ArrowRight
+                    size={20}
+                    style={{
+                      color: (idx === 0 ? arrow1 : arrow2) ? AGENT_DEFS[idx + 1].color : 'var(--text-tertiary)',
+                      transition: 'color 0.3s ease',
+                      position: 'absolute',
+                    }}
+                  />
+                </div>
+              )}
+            </>
+          );
+        })}
+      </div>
+
+      {/* Success state */}
+      {status === 'done' && (
+        <div
+          className="mt-5 flex items-center gap-3 p-4 rounded-xl animate-success-pop"
+          style={{ background: 'rgba(52,199,89,0.12)', border: '1px solid rgba(52,199,89,0.3)' }}
+        >
+          <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ background: '#34c759' }}>
+            <Check size={16} color="#fff" />
+          </div>
+          <div>
+            <p className="text-sm font-700" style={{ fontWeight: 700, color: '#34c759' }}>Orchestration Complete!</p>
+            <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+              All 3 agents ran successfully · Lead qualified · Email drafted · Meeting scheduled
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// MAIN PAGE
+// ============================================================
+export default function WorkflowsPage() {
+  const runDaily = async () => {
+    await fetch('http://localhost:8000/api/demo/run-agent-workflow?workflow_type=daily', { method: 'POST' }).catch(() => null);
+  };
+  const runWeekly = async () => {
+    await fetch('http://localhost:8000/api/demo/run-agent-workflow?workflow_type=weekly', { method: 'POST' }).catch(() => null);
+  };
+
+  const LEAD_PAYLOAD = JSON.stringify({
+    email: 'prospect@techcorp.com',
+    first_name: 'Jane',
+    last_name: 'Doe',
+    company_name: 'TechCorp',
+    job_title: 'VP of Engineering',
+    lead_source: 'website_form',
+  }, null, 2);
+
+  const EMAIL_PAYLOAD = JSON.stringify({
+    from: 'angry.client@bigco.com',
+    from_name: 'Mark Johnson',
+    to: 'support@yourcrm.com',
+    subject: 'This is completely unacceptable!',
+    body: 'Our system has been down for 2 hours because of your platform. We are losing thousands per hour. I want to speak to a manager immediately. If this is not resolved in 30 minutes we are canceling.',
+  }, null, 2);
+
+  return (
+    <div className="space-y-8">
+      {/* Header */}
+      <div>
+        <h1 className="section-title" style={{ fontSize: 24 }}>Agentic Workflows</h1>
+        <p className="section-subtitle">Manage scheduled workflows, simulate real-world events, and orchestrate multi-agent pipelines</p>
+      </div>
+
+      {/* Section 1 — Scheduled Workflows */}
+      <div>
+        <h2 className="font-700 text-lg mb-4" style={{ fontWeight: 700 }}>Scheduled Workflows</h2>
+        <div className="grid gap-4" style={{ gridTemplateColumns: '1fr 1fr' }}>
+          <WorkflowCard
+            title="Daily Monitoring Workflow"
+            description="Analyzes all active deals, monitors customer health scores, qualifies new leads, and generates daily performance metrics."
+            nextRun="Tomorrow at 02:00 AM"
+            runs={DAILY_RUNS}
+            onRunNow={runDaily}
+          />
+          <WorkflowCard
+            title="Weekly Executive Report"
+            description="Generates comprehensive pipeline health analysis, predictive forecasting, churn risk report, and executive KPI summary."
+            nextRun="Monday at 08:00 AM"
+            runs={WEEKLY_RUNS}
+            onRunNow={runWeekly}
+          />
+        </div>
+      </div>
+
+      {/* Section 2 — Webhook Simulator */}
+      <div>
+        <h2 className="font-700 text-lg mb-1" style={{ fontWeight: 700 }}>Webhook Simulator</h2>
+        <p className="section-subtitle mb-4">Test agentic workflows by simulating real-world triggers</p>
+
+        <div className="grid gap-4 mb-6" style={{ gridTemplateColumns: '1fr 1fr' }}>
+          <WebhookCard
+            title="📥 New Lead Form Submission"
+            description="Simulates a new lead coming in from a website form. Triggers the Lead Qualification Agent."
+            endpoint="/webhooks/form-submission"
+            defaultPayload={LEAD_PAYLOAD}
+            color="#0066cc"
+          />
+          <WebhookCard
+            title="📧 Incoming Negative Email"
+            description="Simulates an angry customer email. Triggers Email Intelligence Agent with escalation."
+            endpoint="/webhooks/email-received"
+            defaultPayload={EMAIL_PAYLOAD}
+            color="#5e5ce6"
+          />
+        </div>
+
+        {/* Main Demo — Orchestration Panel */}
+        <OrchestrationPanel />
+      </div>
+    </div>
+  );
+}

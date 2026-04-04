@@ -1,39 +1,25 @@
-import type { Metadata } from "next";
-import { Outfit } from "next/font/google";
-import "./globals.css";
-
-const outfit = Outfit({
-  subsets: ["latin"],
-  variable: "--font-outfit",
-  weight: ["300", "400", "500", "600", "700", "800"],
-});
+import type { Metadata } from 'next';
+import './globals.css';
+import Sidebar from '@/components/Sidebar';
 
 export const metadata: Metadata = {
-  title: "AI CRM — Agentic Insight Dashboard",
-  description:
-    "AI CRM: Query your data with natural language. AI-powered, privacy-first analytics dashboard built with Multi-Agent Agentic workflows.",
-  keywords: ["AI", "CRM", "dashboard", "analytics", "natural language", "SQLite", "data visualization"],
+  title: 'AI CRM — Agentic Workflows',
+  description: 'Production-ready CRM powered by multi-agent AI architecture. Automate lead qualification, email intelligence, sales pipeline, customer success, and more.',
+  keywords: ['CRM', 'AI agents', 'sales automation', 'lead qualification', 'customer success'],
 };
-
-import { ThemeProvider } from "@/components/ThemeProvider";
-import Sidebar from "@/components/Sidebar";
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
   return (
-    <html lang="en" className="light" suppressHydrationWarning>
-      <body className={`${outfit.variable} font-outfit antialiased overflow-x-hidden`}>
-        <ThemeProvider>
-          <div className="grid grid-cols-[auto_1fr] min-h-screen bg-[var(--bg-base)]">
-            <Sidebar />
-            <main className="relative flex flex-col min-w-0">
-              {children}
-            </main>
-          </div>
-        </ThemeProvider>
+    <html lang="en" suppressHydrationWarning>
+      <body>
+        <Sidebar />
+        <main className="main-content page-enter">
+          {children}
+        </main>
       </body>
     </html>
   );

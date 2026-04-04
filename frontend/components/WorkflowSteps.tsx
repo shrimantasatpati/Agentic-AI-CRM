@@ -1,85 +1,189 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { CheckCircle2, Circle, Loader2, Sparkles, Activity, Database, BrainCircuit, Terminal } from 'lucide-react';
+import { useReducer, useEffect } from 'react';
+import { Check, AlertCircle } from 'lucide-react';
+import type { ExecutionStep } from '@/types';
 
-interface WorkflowStepsProps {
-  steps: string[];
+// ---- Reducer ----
+type Action =
+  | { type: 'START_STEP'; index: number }
+  | { type: 'COMPLETE_STEP'; index: number; output: string; durationMs: number }
+  | { type: 'ERROR_STEP'; index: number; output: string }
+  | { type: 'RESET' };
+
+function reducer(state: ExecutionStep[], action: Action): ExecutionStep[] {
+  switch (action.type) {
+    case 'START_STEP':
+      return state.map((s, i) =>
+        i === action.index ? { ...s, status: 'running' } : s
+      );
+    case 'COMPLETE_STEP':
+      return state.map((s, i) =>
+        i === action.index
+          ? { ...s, status: 'complete', output: action.output, durationMs: action.durationMs }
+          : s
+      );
+    case 'ERROR_STEP':
+      return state.map((s, i) =>
+        i === action.index ? { ...s, status: 'error', output: action.output } : s
+      );
+    case 'RESET':
+      return state.map((s) => ({ ...s, status: 'pending', output: undefined, durationMs: undefined }));
+    default:
+      return state;
+  }
 }
 
-export default function WorkflowSteps({ steps }: WorkflowStepsProps) {
-  const [visibleSteps, setVisibleSteps] = useState<number>(0);
+// ---- Props ----
+interface WorkflowStepsProps {
+  steps: { name: string; output: string }[];
+  color: string;
+  running: boolean;
+  onComplete?: (totalMs: number) => void;
+}
+
+export default function WorkflowSteps({ steps, color, running, onComplete }: WorkflowStepsProps) {
+  const [state, dispatch] = useReducer(
+    reducer,
+    steps.map((s, i) => ({ id: i, name: s.name, status: 'pending' as const }))
+  );
 
   useEffect(() => {
-    if (steps.length > 0) {
-      // Simulate real-time progress by staggered reveal
-      const timer = setInterval(() => {
-        setVisibleSteps((prev) => {
-          if (prev >= steps.length) {
-            clearInterval(timer);
-            return prev;
-          }
-          return prev + 1;
+    if (!running) return;
+
+    // Reset first
+    dispatch({ type: 'RESET' });
+
+    let cancelled = false;
+    const startTime = Date.now();
+
+    const run = async () => {
+      for (let i = 0; i < steps.length; i++) {
+        if (cancelled) return;
+
+        // Mark as running
+        dispatch({ type: 'START_STEP', index: i });
+
+        // Simulate processing time (300–800ms varies by step)
+        const delay = 300 + Math.random() * 500;
+        await new Promise((r) => setTimeout(r, delay));
+
+        if (cancelled) return;
+        const stepStart = Date.now();
+        const durationMs = Math.round(delay);
+
+        dispatch({
+          type: 'COMPLETE_STEP',
+          index: i,
+          output: steps[i].output,
+          durationMs,
         });
-      }, 600); // Reveal a step every 600ms
 
-      return () => clearInterval(timer);
-    }
-  }, [steps]);
+        // Small gap between steps
+        await new Promise((r) => setTimeout(r, 120));
+      }
 
-  if (!steps || steps.length === 0) return null;
+      if (!cancelled && onComplete) {
+        onComplete(Date.now() - startTime);
+      }
+    };
 
-  const getIcon = (step: string) => {
-    const s = step.toLowerCase();
-    if (s.includes('intent') || s.includes('identifying')) return <Sparkles size={16} className="text-purple-500" />;
-    if (s.includes('sql') || s.includes('query')) return <Terminal size={16} className="text-blue-500" />;
-    if (s.includes('executing') || s.includes('extracting')) return <Database size={16} className="text-cyan-500" />;
-    if (s.includes('reasoning') || s.includes('synthesizing')) return <BrainCircuit size={16} className="text-pink-500" />;
-    if (s.includes('success') || s.includes('retrieved')) return <CheckCircle2 size={16} className="text-green-500" />;
-    return <Activity size={16} className="text-gray-400" />;
-  };
+    run();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [running]);
+
+  const totalMs = state.reduce((sum, s) => sum + (s.durationMs || 0), 0);
+  const allComplete = state.every((s) => s.status === 'complete');
 
   return (
-    <div className="flex flex-col gap-3 py-4 pl-4 border-l-2 border-dashed border-[var(--border-subtle)] my-4 animate-in fade-in duration-500">
-      <div className="flex items-center gap-2 mb-2">
-        <Loader2 size={16} className="animate-spin text-blue-600" />
-        <span className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
-          Agentic Workflow in Progress
-        </span>
-      </div>
-      
-      {steps.map((step, index) => {
-        const isVisible = index < visibleSteps;
-        const isLast = index === visibleSteps - 1 && index < steps.length - 1;
-        
-        return (
-          <div 
-            key={index} 
-            className={`flex items-start gap-3 transition-all duration-500 ${
-              isVisible ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-4'
-            }`}
-          >
-            <div className="mt-0.5 relative">
-              {isVisible ? getIcon(step) : <Circle size={16} className="text-[var(--border-medium)]" />}
-              {isLast && (
-                 <div className="absolute inset-0 animate-ping rounded-full bg-blue-400/20" />
+    <div className="space-y-1">
+      {state.map((step, idx) => (
+        <div key={step.id} className="relative flex gap-3 pb-2" style={{ minHeight: 44 }}>
+          {/* Connector line */}
+          {idx < state.length - 1 && (
+            <div
+              className="absolute"
+              style={{ left: 11, top: 26, bottom: 0, width: 1, background: 'var(--border-primary)' }}
+            />
+          )}
+
+          {/* Step circle */}
+          <div className="flex-shrink-0 z-10">
+            <StepCircle step={step} color={color} />
+          </div>
+
+          {/* Content */}
+          <div className="flex-1 min-w-0 pt-0.5">
+            <div className="flex items-center gap-2">
+              <span
+                className="text-sm font-medium leading-tight"
+                style={{
+                  color: step.status === 'pending' ? 'var(--text-tertiary)'
+                       : step.status === 'running' ? color
+                       : 'var(--text-primary)',
+                }}
+              >
+                {step.name}
+              </span>
+              {step.durationMs !== undefined && (
+                <span className="step-duration">{step.durationMs}ms</span>
               )}
             </div>
-            
-            <div className={`text-sm ${isVisible ? 'text-[var(--text-secondary)] font-medium' : 'text-[var(--text-muted)]'}`}>
-              {step}
-            </div>
+            {step.output && step.status !== 'pending' && (
+              <p
+                className="text-xs mt-0.5 animate-fade-in-up"
+                style={{ color: 'var(--text-secondary)', lineHeight: 1.4 }}
+              >
+                {step.output}
+              </p>
+            )}
           </div>
-        );
-      })}
-      
-      {visibleSteps < steps.length && (
-         <div className="flex items-center gap-3 animate-pulse ml-1 mt-1">
-            <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-            <div className="w-1.5 h-1.5 rounded-full bg-blue-500/60 transition-all delay-75" />
-            <div className="w-1.5 h-1.5 rounded-full bg-blue-500/30 transition-all delay-150" />
-         </div>
+        </div>
+      ))}
+
+      {allComplete && totalMs > 0 && (
+        <div
+          className="flex items-center gap-2 mt-3 pt-3 animate-fade-in-up"
+          style={{ borderTop: '1px solid var(--border-primary)' }}
+        >
+          <div className="w-4 h-4 rounded-full flex items-center justify-center" style={{ background: color }}>
+            <Check size={10} color="#fff" />
+          </div>
+          <span className="text-xs font-semibold" style={{ color }}>
+            Completed in {totalMs}ms
+          </span>
+        </div>
       )}
+    </div>
+  );
+}
+
+function StepCircle({ step, color }: { step: ExecutionStep; color: string }) {
+  if (step.status === 'pending') {
+    return (
+      <div className="step-circle step-circle-pending">
+        <span>{step.id + 1}</span>
+      </div>
+    );
+  }
+  if (step.status === 'running') {
+    return (
+      <div className="step-circle step-circle-running" style={{ color }}>
+        <div className="step-spinner" style={{ borderTopColor: color }} />
+      </div>
+    );
+  }
+  if (step.status === 'complete') {
+    return (
+      <div className="step-circle step-circle-complete animate-fade-in" style={{ background: color }}>
+        <Check size={12} />
+      </div>
+    );
+  }
+  return (
+    <div className="step-circle step-circle-error">
+      <AlertCircle size={12} />
     </div>
   );
 }
