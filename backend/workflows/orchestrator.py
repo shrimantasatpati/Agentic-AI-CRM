@@ -1,8 +1,6 @@
-from typing import Dict, Any, cast, Callable, Optional, List
+from typing import Dict, Any, Optional, List
 from sqlalchemy.orm import Session
-import asyncio
 import os
-import threading
 from openai import AsyncOpenAI
 
 from agents import (
