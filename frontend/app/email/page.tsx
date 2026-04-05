@@ -145,7 +145,12 @@ function GmailConnectBanner() {
       const res = await fetch('http://localhost:8000/api/emails/sync?limit=20');
       const data = await res.json() as { fetched?: number; saved_to_crm?: number; status?: string; detail?: string };
       if (!res.ok) {
-        setSyncMsg(`❌ ${data.detail || 'Sync error — check backend'}`);
+        const errorMsg = data.detail || 'Sync error — check backend';
+        setSyncMsg(`❌ ${errorMsg}`);
+        // If backend tells us we aren't actually authenticated, reset state
+        if (errorMsg.toLowerCase().includes('not authenticated')) {
+          setGmailStatus('disconnected');
+        }
       } else {
         const fetched = data.fetched ?? 0;
         const saved   = data.saved_to_crm ?? 0;
