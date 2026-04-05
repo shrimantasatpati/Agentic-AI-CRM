@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import WorkflowSteps from '@/components/WorkflowSteps';
 import ErrorBanner from '@/components/ErrorBanner';
 
@@ -56,17 +56,34 @@ export default function AgentPageLayout({
   const [running, setRunning]   = useState(false);
   const [totalMs, setTotalMs]   = useState<number | null>(null);
 
+  // resolveAnimRef: holds the resolver that fires when animation finishes
+  const resolveAnimRef = useRef<((ms: number) => void) | null>(null);
+
   const handleRun = async () => {
     setRunning(true);
     setTotalMs(null);
-    // Fire API call in parallel — don't await it here.
-    // running stays true until the WorkflowSteps animation completes via onComplete.
-    onRun(formData).catch(() => {/* error handled by parent */});
+    // Create a promise that resolves when WorkflowSteps animation completes
+    const animDone = new Promise<number>((resolve) => {
+      resolveAnimRef.current = resolve;
+    });
+    // Run API call and wait for animation — both must finish before we stop
+    try {
+      await Promise.all([
+        onRun(formData).catch(() => { /* error handled by parent */ }),
+        animDone,
+      ]);
+    } finally {
+      setRunning(false);
+    }
   };
 
   const handleAnimationComplete = (ms: number) => {
     setTotalMs(ms);
-    setRunning(false);
+    // Unblock handleRun so it can call setRunning(false)
+    if (resolveAnimRef.current) {
+      resolveAnimRef.current(ms);
+      resolveAnimRef.current = null;
+    }
   };
 
   const applyExample = (ex: ExampleInput) => {
