@@ -494,27 +494,82 @@ async def gmail_auth_status():
 
 
 @app.get("/api/emails/sync")
-async def sync_gmail_emails(limit: int = 20, db: Session = Depends(get_db)):
-    """Fetch unread Gmail emails and save new ones to CRM."""
+async def sync_gmail_emails(limit: int = 20, db: Session = Depends(get_db), background_tasks: BackgroundTasks = None):
+    """Fetch unread Gmail emails and save new ones to CRM, then auto-analyze via agent."""
     from services.gmail_service import fetch_unread_emails
     from database.models import Email as EmailModel
+    import logging
+    logger = logging.getLogger("email_sync")
     try:
         gmail_emails = fetch_unread_emails(max_results=limit)
+        print(f"\n{'='*60}")
+        print(f"[EMAIL SYNC] Fetched {len(gmail_emails)} unread email(s) from Gmail")
+        print(f"{'='*60}")
         saved_count = 0
+        newly_saved_ids = []
         for ge in gmail_emails:
+            sender  = ge.get("from", "unknown")
+            subject = ge.get("subject", "(no subject)")
+            print(f"  📧 From: {sender}")
+            print(f"     Subject: {subject}")
             existing = db.query(EmailModel).filter(
                 EmailModel.from_email == ge.get("from", ""),
                 EmailModel.subject == ge.get("subject", "")
             ).first()
             if not existing:
-                db.add(EmailModel(
+                new_email = EmailModel(
                     from_email=ge.get("from", ""), to_email=ge.get("to", ""),
                     subject=ge.get("subject", ""), body=ge.get("body", ""),
                     direction="inbound",
                     extra_metadata={"gmail_id": ge.get("gmail_id"), "thread_id": ge.get("thread_id")},
-                ))
+                )
+                db.add(new_email)
+                db.flush()                          # get the ID before commit
+                newly_saved_ids.append(new_email.id)
                 saved_count += 1
+                print(f"     ✅ NEW — saved to CRM DB (id={new_email.id})")
+            else:
+                print(f"     ⏭  Already in CRM — skipped")
         db.commit()
+        print(f"\n[EMAIL SYNC] Summary: {len(gmail_emails)} fetched · {saved_count} new saved · {len(gmail_emails)-saved_count} already known")
+        print(f"{'='*60}\n")
+
+        # Auto-analyze newly saved emails via Email Intelligence Agent (background)
+        if newly_saved_ids and background_tasks:
+            async def _auto_analyze():
+                analyze_db = next(get_db())
+                try:
+                    emails_to_analyze = analyze_db.query(EmailModel).filter(
+                        EmailModel.id.in_(newly_saved_ids)
+                    ).all()
+                    for email_record in emails_to_analyze:
+                        try:
+                            print(f"[AUTO-ANALYZE] Running Email Intelligence Agent on: {email_record.subject}")
+                            agent_result = await orchestrator.email_agent.execute({
+                                "email_data": {
+                                    "from": email_record.from_email,
+                                    "subject": email_record.subject,
+                                    "body": email_record.body or "",
+                                    "id": email_record.id,
+                                }
+                            })
+                            metadata = dict(email_record.extra_metadata or {})
+                            metadata["agent_analyzed"] = True
+                            metadata["sentiment"]  = agent_result.get("sentiment")
+                            metadata["category"]   = agent_result.get("category")
+                            metadata["priority"]   = agent_result.get("priority")
+                            metadata["draft_response"]     = agent_result.get("draft_response")
+                            metadata["follow_up_suggestions"] = agent_result.get("follow_up_suggestions", [])
+                            email_record.extra_metadata = metadata
+                            analyze_db.add(email_record)
+                            analyze_db.commit()
+                            print(f"[AUTO-ANALYZE] ✅ Done: sentiment={agent_result.get('sentiment',{}).get('label')} · category={agent_result.get('category')} · priority={agent_result.get('priority')}")
+                        except Exception as e:
+                            print(f"[AUTO-ANALYZE] ⚠️  Failed for email {email_record.id}: {e}")
+                finally:
+                    analyze_db.close()
+            background_tasks.add_task(_auto_analyze)
+
         return {"status": "success", "fetched": len(gmail_emails), "saved_to_crm": saved_count, "emails": gmail_emails}
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Gmail sync failed: {e}")
@@ -654,7 +709,9 @@ async def schedule_meeting_sync(req: ScheduleMeetingRequest, db: Session = Depen
         title = req.title or f"{req.meeting_type.replace('_', ' ').title()} Meeting"
 
         from services.calendar_service import create_event, is_authenticated as cal_authed
+        print(f"\n[MEETING SYNC] cal_authed() = {cal_authed()}")
         if cal_authed():
+            print(f"[MEETING SYNC] Booking in Google Calendar: '{title}' at {start_dt.isoformat()}")
             calendar_result = create_event(
                 title=title,
                 start_iso=start_dt.isoformat(),
@@ -663,6 +720,7 @@ async def schedule_meeting_sync(req: ScheduleMeetingRequest, db: Session = Depen
                 description=req.notes,
                 add_meet_link=True,
             )
+            print(f"[MEETING SYNC] Calendar result: {calendar_result}")
             # Save to CRM meetings table
             from database.models import Meeting
             meeting_record = Meeting(
@@ -674,8 +732,11 @@ async def schedule_meeting_sync(req: ScheduleMeetingRequest, db: Session = Depen
             db.add(meeting_record)
             db.commit()
         else:
-            calendar_result = {"success": False, "error": "Google Calendar not connected — connect via Gmail OAuth first"}
+            print("[MEETING SYNC] ⚠️ Calendar NOT authenticated — token missing or lacks Calendar scopes.")
+            print("[MEETING SYNC]    → Re-authorize via Connect Gmail button to get Calendar access.")
+            calendar_result = {"success": False, "error": "Google Calendar not connected — re-authorize via Connect Gmail to include Calendar scopes"}
     except Exception as e:
+        print(f"[MEETING SYNC] ❌ Calendar exception: {e}")
         calendar_result = {"success": False, "error": str(e)}
 
     meeting_result["calendar_booked"] = calendar_result

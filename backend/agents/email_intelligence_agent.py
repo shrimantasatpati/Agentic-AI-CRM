@@ -71,23 +71,52 @@ class EmailIntelligenceAgent(BaseAgent):
         return result
 
     async def _analyze_email_single_call(self, email_data: Dict[str, Any]):
-        """Single optimized LLM call: sentiment + category + priority in one structured JSON response"""
+        """
+        Hybrid analysis:
+        - VADER (rule-based, zero-latency, no rate limit) for sentiment score/label/emotion
+        - Single LLM call for category + priority (which require business logic understanding)
+        """
         import json
-        content = email_data.get("body", "")
-        subject = email_data.get("subject", "")
+        content = email_data.get("body", "") or ""
+        subject = email_data.get("subject", "") or ""
+        full_text = f"{subject}. {content}"
 
-        combined_prompt = f"""Analyze this email and return ONLY a valid JSON object:
+        # --- VADER Sentiment (deterministic, no LLM call needed) ---
+        try:
+            from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+            _vader = SentimentIntensityAnalyzer()
+            vs = _vader.polarity_scores(full_text)
+            compound = vs["compound"]           # -1.0 … +1.0
+            # Map compound → 1-10 score
+            vader_score = round((compound + 1) / 2 * 9 + 1)  # 1-10
+            vader_score = max(1, min(10, vader_score))
+            if compound >= 0.35:
+                vader_label, vader_emotion = "positive", "happiness"
+            elif compound <= -0.35:
+                vader_label, vader_emotion = "negative", "frustration"
+            else:
+                vader_label, vader_emotion = "neutral", "neutral"
+            # Boost emotion if highly positive
+            if compound >= 0.6:
+                vader_emotion = "excitement"
+            elif compound <= -0.6:
+                vader_emotion = "anger"
+        except Exception:
+            vader_score, vader_label, vader_emotion = 5, "neutral", "neutral"
+
+        # --- LLM Call: category + priority + urgency (single call) ---
+        combined_prompt = f"""Analyze this CRM email and return ONLY valid JSON:
 
 Subject: {subject}
-Body: {content[:500]}
+Body: {content[:600]}
 
-Return exactly this JSON structure:
+IMPORTANT: if the sender says they are "excited", "happy", "interested" or asks for a "demo" —
+that is a POSITIVE sales inquiry, NOT a complaint.
+
+Return exactly this JSON:
 {{
-  "sentiment_score": <integer 1-10, 1=very negative, 10=very positive>,
-  "sentiment_label": "positive|neutral|negative",
-  "emotion": "anger|frustration|happiness|excitement|neutral",
   "urgency": "low|medium|high",
-  "concerns": ["concern1", "concern2"],
+  "concerns": ["concern1"],
   "category": "support_request|sales_inquiry|demo_request|pricing_question|complaint|feature_request|general_inquiry",
   "priority": "low|medium|high"
 }}"""
@@ -95,16 +124,16 @@ Return exactly this JSON structure:
         raw = await self.think(combined_prompt)
 
         try:
-            json_match = __import__('re').search(r'\{{.*\}}', raw, __import__('re').DOTALL)
+            json_match = __import__('re').search(r'\{.*\}', raw, __import__('re').DOTALL)
             parsed = json.loads(json_match.group() if json_match else raw)
         except Exception:
             parsed = {}
 
         sentiment = {
-            "score":   int(parsed.get("sentiment_score", 5)),
-            "label":   parsed.get("sentiment_label", "neutral"),
-            "emotion": parsed.get("emotion", "neutral"),
-            "urgency": parsed.get("urgency", "medium"),
+            "score":    vader_score,
+            "label":    vader_label,
+            "emotion":  vader_emotion,
+            "urgency":  parsed.get("urgency", "medium"),
             "concerns": parsed.get("concerns", []),
         }
         category = parsed.get("category", "general_inquiry")
@@ -113,6 +142,7 @@ Return exactly this JSON structure:
         priority = parsed.get("priority", "medium")
 
         return sentiment, category, priority
+
 
 
     async def analyze_sentiment(self, email_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -209,7 +239,7 @@ Return exactly this JSON structure:
         sentiment: Dict[str, Any],
         category: str
     ) -> str:
-        """Draft personalized email response"""
+        """Draft personalized email response AND follow-ups in one combined LLM call."""
 
         sender_name = email_data.get("from_name", "there")
         content = email_data.get("body", "")
@@ -218,64 +248,64 @@ Return exactly this JSON structure:
         # Get context from CRM
         context = await self._get_customer_context(email_data.get("from"))
 
-        response_prompt = f"""
-        Draft a professional, personalized email response:
+        response_prompt = f"""You are a CRM assistant. Draft a professional email reply AND suggest 3 follow-up actions.
+Return ONLY valid JSON with exactly these two keys:
 
-        Original Email:
-        From: {sender_name}
-        Subject: {subject}
-        Body: {content}
+Original Email:
+From: {sender_name}
+Subject: {subject}
+Body: {content[:500]}
 
-        Context:
-        - Sentiment: {sentiment['label']} ({sentiment['emotion']})
-        - Category: {category}
-        - Customer history: {context}
+Context:
+- Sentiment: {sentiment['label']} (emotion: {sentiment['emotion']}, score: {sentiment['score']}/10)
+- Category: {category}
+- Customer history: {context}
 
-        Guidelines:
-        - Address concerns directly
-        - Match tone to sentiment (empathetic if negative, enthusiastic if positive)
-        - Provide specific next steps
-        - Keep it concise (3-4 paragraphs max)
-        - End with clear call-to-action
+Guidelines for draft:
+- Match tone to sentiment (enthusiastic if positive/excited, empathetic if negative)
+- Address the specific request directly
+- Provide clear next steps
+- Keep it concise (3-4 paragraphs)
 
-        Draft the email response:
-        """
+Return ONLY this JSON:
+{{
+  "draft": "<the full email reply as a string, use \\n for line breaks>",
+  "follow_ups": ["action 1", "action 2", "action 3"]
+}}"""
 
-        draft = await self.think(response_prompt)
+        raw = await self.think(response_prompt)
 
-        return draft
+        try:
+            import json, re
+            json_match = re.search(r'\{.*\}', raw, re.DOTALL)
+            parsed = json.loads(json_match.group() if json_match else raw)
+            self._last_follow_ups = parsed.get("follow_ups", [])
+            return parsed.get("draft", raw)
+        except Exception:
+            self._last_follow_ups = []
+            return raw
 
     async def suggest_follow_ups(
         self,
         email_data: Dict[str, Any],
         category: str
     ) -> List[str]:
-        """Generate smart follow-up suggestions"""
+        """Return follow-ups pre-generated in draft_response (no extra LLM call)."""
+        # Follow-ups are already generated in draft_response to save an LLM call.
+        # Fallback rule-based suggestions if draft_response hasn't run yet.
+        if hasattr(self, '_last_follow_ups') and self._last_follow_ups:
+            result = self._last_follow_ups
+            self._last_follow_ups = []
+            return result
+        fallbacks = {
+            "demo_request":     ["Schedule a 30-min demo call", "Send product overview deck", "Connect with Solutions Engineer"],
+            "sales_inquiry":    ["Send pricing and case studies", "Schedule discovery call", "Add to sales nurture sequence"],
+            "complaint":        ["Escalate to Customer Success", "Apply service credit if applicable", "Schedule immediate call"],
+            "pricing_question": ["Send tailored pricing sheet", "Schedule pricing call with AE", "Share ROI calculator"],
+            "support_request":  ["Create support ticket", "Loop in technical team", "Schedule troubleshooting call"],
+        }
+        return fallbacks.get(category, ["Follow up within 24 hours", "Log interaction in CRM", "Review account history"])
 
-        suggestions_prompt = f"""
-        Suggest 3 follow-up actions for this email:
-
-        Category: {category}
-        Email: {email_data.get('body', '')[:200]}
-
-        Provide specific, actionable follow-ups like:
-        - Schedule demo call
-        - Send pricing sheet
-        - Connect with technical team
-        - Add to nurture campaign
-
-        Return as numbered list.
-        """
-
-        suggestions_text = await self.think(suggestions_prompt)
-
-        # Parse suggestions
-        suggestions = [
-            s.strip() for s in suggestions_text.split("\n")
-            if s.strip() and any(c.isalpha() for c in s)
-        ][:3]
-
-        return suggestions
 
     async def _is_vip_sender(self, email: str) -> bool:
         """Check if sender is VIP customer"""

@@ -255,12 +255,34 @@ class AgentOrchestrator:
             email_task = {
                 "email_data": {
                     "from": lead_data.get("email"),
-                    "body": f"New high-value lead: {lead_data.get('first_name')}",
+                    "body": f"New high-value lead: {lead_data.get('first_name')} from {lead_data.get('domain', 'unknown company')}",
                     "subject": "Welcome",
                 }
             }
-            await self.email_agent.execute(email_task)
-            steps.append("✨ Agent 2: Personalized email draft created and queued for review.")
+            email_result = await self.email_agent.execute(email_task)
+            draft = email_result.get("draft_response", "")
+            steps.append("✨ Agent 2: Personalized email draft created.")
+
+            # Auto-send via Gmail if authenticated
+            try:
+                from services.gmail_service import is_authenticated, send_reply
+                if is_authenticated() and draft and lead_data.get("email"):
+                    send_result = send_reply(
+                        to_email=lead_data["email"],
+                        subject=f"Welcome to AI CRM, {lead_data.get('first_name', 'there')}!",
+                        body=draft,
+                    )
+                    if send_result.get("success"):
+                        steps.append(f"📨 Auto-email SENT to {lead_data['email']} ✅")
+                        print(f"[LEAD AUTO-EMAIL] ✅ Sent to {lead_data['email']}")
+                    else:
+                        steps.append(f"⚠️ Auto-email draft ready but send failed: {send_result.get('error', 'unknown')}")
+                        print(f"[LEAD AUTO-EMAIL] ⚠️ Send failed: {send_result}")
+                else:
+                    steps.append("ℹ️ Gmail not connected — email draft queued for manual review")
+            except Exception as e:
+                steps.append(f"⚠️ Auto-email error: {e}")
+                print(f"[LEAD AUTO-EMAIL] ⚠️ Exception: {e}")
 
         if qualification_result.get("score", 0) >= 80:
             steps.append("📅 Agent 3: Strategic lead priority! Proposing executive meeting times...")
