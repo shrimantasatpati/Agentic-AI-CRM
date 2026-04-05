@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useCallback } from 'react';
-import { Calendar, Clock, Users, Check } from 'lucide-react';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { Calendar, Clock, Users, Check, RefreshCw, ExternalLink } from 'lucide-react';
 import AgentPageLayout from '@/components/AgentPageLayout';
 import type { MeetingSchedulerResult } from '@/types';
 
@@ -70,25 +70,150 @@ function getInitials(email: string): string {
   return name.split(' ').map((w) => w[0]?.toUpperCase() || '').slice(0, 2).join('');
 }
 
+// ---- Google Calendar Connect Banner ----
+function CalendarConnectBanner() {
+  const [calStatus, setCalStatus] = useState<'connected' | 'disconnected'>('disconnected');
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const checkStatus = useCallback(async () => {
+    try {
+      const res = await fetch('http://localhost:8000/api/auth/gmail/status');
+      if (res.ok) {
+        const data = await res.json() as { authenticated: boolean };
+        setCalStatus(data.authenticated ? 'connected' : 'disconnected');
+        if (data.authenticated && pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+      }
+    } catch { /* backend offline */ }
+  }, []);
+
+  useEffect(() => {
+    checkStatus();
+    pollRef.current = setInterval(checkStatus, 4000);
+    const onMessage = (e: MessageEvent) => { if (e.data === 'gmail_auth_complete') checkStatus(); };
+    window.addEventListener('message', onMessage);
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+      window.removeEventListener('message', onMessage);
+    };
+  }, [checkStatus]);
+
+  const handleConnect = () => {
+    // Open popup synchronously (Firefox-safe), then redirect to OAuth URL
+    const popup = window.open('about:blank', 'gmail_oauth', 'width=520,height=660,toolbar=0,scrollbars=1');
+    fetch('http://localhost:8000/api/auth/gmail')
+      .then(async (r) => {
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({ detail: 'Backend error' })) as { detail?: string };
+          if (popup && !popup.closed) {
+            popup.document.write(`<body style="font-family:sans-serif;background:#0a0a0f;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center;padding:32px;background:rgba(255,59,48,.08);border:1px solid rgba(255,59,48,.3);border-radius:20px;max-width:360px"><div style="font-size:40px;margin-bottom:16px">⚠️</div><h2 style="color:#ff3b30;margin:0 0 8px">Setup Required</h2><p style="color:rgba(255,255,255,.6);margin:0 0 16px;font-size:14px">${err.detail || 'Gmail credentials not configured.'}</p><p style="color:rgba(255,255,255,.4);font-size:12px">Add GMAIL_API_CREDENTIALS to backend/.env</p></div></body>`);
+          }
+          return;
+        }
+        return r.json();
+      })
+      .then((data?: { auth_url?: string }) => {
+        if (!data || !data.auth_url) return;
+        if (popup && !popup.closed) { popup.location.href = data.auth_url; }
+        else { window.location.href = data.auth_url; }
+        if (pollRef.current) clearInterval(pollRef.current);
+        pollRef.current = setInterval(checkStatus, 2000);
+      })
+      .catch(() => { if (popup && !popup.closed) popup.close(); });
+  };
+
+  const connected = calStatus === 'connected';
+
+  return (
+    <div
+      className="flex items-center gap-3 p-3 rounded-xl mb-4"
+      style={{
+        background: connected ? 'rgba(52,199,89,0.08)' : 'rgba(191,90,242,0.07)',
+        border: `1px solid ${connected ? 'rgba(52,199,89,0.3)' : 'rgba(191,90,242,0.25)'}`,
+      }}
+    >
+      <div
+        className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+        style={{ background: connected ? 'rgba(52,199,89,0.15)' : 'rgba(191,90,242,0.15)' }}
+      >
+        <Calendar size={15} color={connected ? '#34c759' : '#bf5af2'} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>Google Calendar</p>
+        <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+          {connected
+            ? 'Connected · Will create real events + Google Meet links'
+            : 'Connect to book real calendar events and send invites'}
+        </p>
+      </div>
+      {connected ? (
+        <span className="badge badge-green text-xs flex-shrink-0">Active</span>
+      ) : (
+        <button
+          onClick={handleConnect}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold flex-shrink-0"
+          style={{ background: '#bf5af2', color: '#fff', cursor: 'pointer' }}
+        >
+          <Calendar size={11} />
+          Connect
+        </button>
+      )}
+    </div>
+  );
+}
+
 export default function MeetingsPage() {
   const [result, setResult]         = useState<MeetingSchedulerResult | null>(null);
   const [isComplete, setIsComplete] = useState(false);
   const [error, setError]           = useState<string | null>(null);
   const [doneItems, setDoneItems]   = useState<Set<number>>(new Set());
+  const [calBooked, setCalBooked]   = useState<{ success: boolean; event_link?: string; meeting_link?: string; error?: string } | null>(null);
 
   const handleRun = useCallback(async (formData: Record<string, string>) => {
     setError(null);
     setIsComplete(false);
     setDoneItems(new Set());
-    try {
-      await fetch('http://localhost:8000/api/agents/schedule-meeting', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
-      }).catch(() => null);
-    } catch { /* ignore */ }
+    setCalBooked(null);
+    setResult(null);
+
+    // Run animation and real API call in parallel
+    const apiCallPromise = fetch('http://localhost:8000/api/agents/schedule-meeting/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(formData),
+    }).then(async (res) => {
+      if (!res.ok) return null;
+      return res.json();
+    }).catch(() => null);
+
+    // Wait for animation
     await new Promise((r) => setTimeout(r, STEPS.length * 500 + 600));
-    setResult({ ...MOCK_RESULT, meeting_type: formData.meeting_type || MOCK_RESULT.meeting_type });
+
+    const liveResult = await apiCallPromise;
+    if (liveResult) {
+      // Map agent result to display format
+      const display: MeetingSchedulerResult = {
+        scheduled_time: liveResult.scheduled_time || liveResult.context?.scheduled_time || 'Time selected by AI agent',
+        duration_minutes: parseInt(formData.duration || '30', 10),
+        meeting_type: formData.meeting_type || liveResult.type || 'Meeting',
+        attendees: liveResult.attendees || formData.attendees?.split(',').map((s: string) => s.trim()) || [],
+        agenda: Array.isArray(liveResult.agenda)
+          ? liveResult.agenda.map((a: string | { item: string; duration_minutes: number }) =>
+              typeof a === 'string' ? { item: a, duration_minutes: 10 } : a
+            )
+          : MOCK_RESULT.agenda,
+        prep_materials: liveResult.prep_materials || {
+          ...MOCK_RESULT.prep_materials,
+          talking_points: Array.isArray(liveResult.prep_notes)
+            ? liveResult.prep_notes
+            : (liveResult.prep_notes ? [liveResult.prep_notes] : MOCK_RESULT.prep_materials.talking_points),
+        },
+        follow_up_tasks: liveResult.follow_up_tasks || MOCK_RESULT.follow_up_tasks,
+      };
+      setResult(display);
+      setCalBooked(liveResult.calendar_booked || null);
+    } else {
+      setResult({ ...MOCK_RESULT, meeting_type: formData.meeting_type || MOCK_RESULT.meeting_type });
+    }
     setIsComplete(true);
   }, []);
 
@@ -99,7 +224,7 @@ export default function MeetingsPage() {
   return (
     <AgentPageLayout
       agentName="Meeting Scheduler"
-      agentDescription="Intelligently schedules meetings, generates agendas, assembles prep materials, and creates follow-up tasks."
+      agentDescription="Intelligently schedules meetings, generates agendas, assembles prep materials, and creates Google Calendar events."
       agentColor={COLOR}
       agentEmoji="📅"
       formFields={[
@@ -115,8 +240,57 @@ export default function MeetingsPage() {
       onRun={handleRun}
       error={error}
       isComplete={isComplete}
+      headerExtra={<CalendarConnectBanner />}
       resultNode={result && (
         <div className="space-y-4">
+          {/* Google Calendar Booking Status */}
+          {calBooked && (
+            <div
+              className="flex items-center gap-3 p-3 rounded-xl"
+              style={{
+                background: calBooked.success ? 'rgba(52,199,89,0.08)' : 'rgba(255,149,0,0.08)',
+                border: `1px solid ${calBooked.success ? 'rgba(52,199,89,0.3)' : 'rgba(255,149,0,0.3)'}`,
+              }}
+            >
+              <div
+                className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+                style={{ background: calBooked.success ? 'rgba(52,199,89,0.15)' : 'rgba(255,149,0,0.15)' }}
+              >
+                <Calendar size={15} color={calBooked.success ? '#34c759' : '#ff9500'} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>
+                  {calBooked.success ? 'Google Calendar Event Created ✅' : 'Calendar Booking Pending'}
+                </p>
+                <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                  {calBooked.success
+                    ? 'Invites sent to all attendees'
+                    : calBooked.error || 'Connect Google Calendar to auto-book events'}
+                </p>
+              </div>
+              {calBooked.success && calBooked.event_link && (
+                <a
+                  href={calBooked.event_link} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold flex-shrink-0"
+                  style={{ background: '#34c759', color: '#fff' }}
+                >
+                  <ExternalLink size={11} />
+                  Open Event
+                </a>
+              )}
+              {calBooked.success && calBooked.meeting_link && (
+                <a
+                  href={calBooked.meeting_link} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold flex-shrink-0 ml-2"
+                  style={{ background: '#0066cc', color: '#fff' }}
+                >
+                  <RefreshCw size={11} />
+                  Join Meet
+                </a>
+              )}
+            </div>
+          )}
+
           {/* Scheduled Time */}
           <div className="apple-card" style={{ background: `linear-gradient(135deg, ${COLOR}10, ${COLOR}05)`, borderColor: `${COLOR}30` }}>
             <div className="flex items-center gap-3 mb-2">

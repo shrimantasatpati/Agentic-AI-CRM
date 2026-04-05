@@ -287,11 +287,11 @@ export default function MissionControlPage() {
                 <p style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>Loading agent status...</p>
               </div>
             ) : agentStatuses.map((agent) => (
-              <div key={agent.id} className="flex items-center gap-3 px-4 py-3">
-                <span style={{ fontSize: 18 }}>{agent.emoji}</span>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>
+              <div key={agent.id} className="flex items-center px-3 py-2.5" style={{ borderBottom: '1px solid var(--border-secondary)', gap: 8 }}>
+                <span style={{ fontSize: 16, flexShrink: 0 }}>{agent.emoji}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="flex items-center flex-wrap" style={{ gap: 4, marginBottom: 2 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-primary)' }}>
                       {agent.name}
                     </span>
                     <span
@@ -299,27 +299,28 @@ export default function MissionControlPage() {
                       style={{
                         background: agent.status === 'active' ? 'rgba(52,199,89,0.15)' : 'rgba(142,142,147,0.15)',
                         color: agent.status === 'active' ? '#34c759' : '#6e6e73',
-                        fontSize: 9, padding: '1px 6px',
+                        fontSize: 9, padding: '1px 5px',
                       }}
                     >
                       {agent.status === 'active' ? '● Active' : 'Standby'}
                     </span>
                   </div>
-                  <p style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+                  <p style={{ fontSize: 10, color: 'var(--text-tertiary)' }}>
                     {agent.runsToday} runs today · {agent.lastRun}
                   </p>
                 </div>
-                <Link href={agent.route}>
+                <Link href={agent.route} style={{ flexShrink: 0 }}>
                   <button
-                    className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold"
+                    className="flex items-center gap-1 rounded-lg font-semibold"
                     style={{
+                      fontSize: 11, padding: '4px 8px',
                       background: `${agent.color}15`,
                       color: agent.color,
                       border: `1px solid ${agent.color}30`,
                       cursor: 'pointer',
                     }}
                   >
-                    <Play size={10} />
+                    <Play size={9} />
                     Run
                   </button>
                 </Link>

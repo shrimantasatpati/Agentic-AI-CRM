@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Copy, Check, AlertTriangle, Mail, RefreshCw, CheckCircle, Loader } from 'lucide-react';
+import { Copy, Check, AlertTriangle, Mail, RefreshCw, Loader } from 'lucide-react';
 import AgentPageLayout from '@/components/AgentPageLayout';
 import type { EmailIntelligenceResult } from '@/types';
 
@@ -74,44 +74,69 @@ Customer Success Team`,
   requires_human_review: true,
 };
 
-// ---- Gmail Connect Button ----
+// ---- Gmail + Calendar Integration Banner ----
 function GmailConnectBanner() {
   // Default to 'disconnected' so the Connect button shows immediately in all browsers
-  const [status, setStatus]     = useState<'connected' | 'disconnected'>('disconnected');
-  const [syncing, setSyncing]   = useState(false);
-  const [syncMsg, setSyncMsg]   = useState('');
-  const pollRef                 = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [gmailStatus, setGmailStatus] = useState<'connected' | 'disconnected'>('disconnected');
+  const [syncing,     setSyncing]     = useState(false);
+  const [syncMsg,     setSyncMsg]     = useState('');
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const checkStatus = useCallback(async () => {
     try {
       const res = await fetch('http://localhost:8000/api/auth/gmail/status');
       if (res.ok) {
         const data = await res.json() as { authenticated: boolean };
-        setStatus(data.authenticated ? 'connected' : 'disconnected');
-        if (data.authenticated && pollRef.current) {
-          clearInterval(pollRef.current);
-          pollRef.current = null;
-        }
+        const authed = data.authenticated;
+        setGmailStatus(authed ? 'connected' : 'disconnected');
+        if (authed && pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
       }
-    } catch { setStatus('disconnected'); }
+    } catch { /* backend offline — keep current state */ }
   }, []);
 
   useEffect(() => {
     checkStatus();
-    // Poll every 3s in case user just completed OAuth in another tab
     pollRef.current = setInterval(checkStatus, 3000);
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+    // Listen for postMessage from the OAuth popup callback page
+    const onMessage = (e: MessageEvent) => {
+      if (e.data === 'gmail_auth_complete') { checkStatus(); }
+    };
+    window.addEventListener('message', onMessage);
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+      window.removeEventListener('message', onMessage);
+    };
   }, [checkStatus]);
 
-  const handleConnect = async () => {
-    try {
-      const res = await fetch('http://localhost:8000/api/auth/gmail');
-      const data = await res.json() as { auth_url: string };
-      window.open(data.auth_url, '_blank', 'width=500,height=650');
-      // Start polling every 2s to detect when auth completes
-      if (pollRef.current) clearInterval(pollRef.current);
-      pollRef.current = setInterval(checkStatus, 2000);
-    } catch { /* backend offline */ }
+  const handleConnect = () => {
+    // FIREFOX FIX: open popup synchronously (in the click handler, before any await)
+    // then redirect it to the OAuth URL once we have it.
+    const popup = window.open('about:blank', 'gmail_oauth', 'width=520,height=660,toolbar=0,scrollbars=1');
+    fetch('http://localhost:8000/api/auth/gmail')
+      .then(async (r) => {
+        if (!r.ok) {
+          // Backend error (e.g. credentials file not configured)
+          const err = await r.json().catch(() => ({ detail: 'Backend error' })) as { detail?: string };
+          if (popup && !popup.closed) {
+            popup.document.write(`<body style="font-family:sans-serif;background:#0a0a0f;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center;padding:32px;background:rgba(255,59,48,.08);border:1px solid rgba(255,59,48,.3);border-radius:20px;max-width:360px"><div style="font-size:40px;margin-bottom:16px">⚠️</div><h2 style="color:#ff3b30;margin:0 0 8px">Setup Required</h2><p style="color:rgba(255,255,255,.6);margin:0 0 16px;font-size:14px">${err.detail || 'Gmail credentials not configured.'}</p><p style="color:rgba(255,255,255,.4);font-size:12px">Add GMAIL_API_CREDENTIALS to backend/.env<br>then download credentials from Google Cloud Console.</p></div></body>`);
+          }
+          return;
+        }
+        return r.json();
+      })
+      .then((data?: { auth_url?: string }) => {
+        if (!data || !data.auth_url) return; // Already handled above
+        if (popup && !popup.closed) {
+          popup.location.href = data.auth_url;
+        } else {
+          // Popup was blocked — fall back to same-tab redirect
+          window.location.href = data.auth_url;
+        }
+        // Poll every 2s to detect when auth completes
+        if (pollRef.current) clearInterval(pollRef.current);
+        pollRef.current = setInterval(checkStatus, 2000);
+      })
+      .catch(() => { if (popup && !popup.closed) popup.close(); });
   };
 
   const handleSync = async () => {
@@ -119,48 +144,53 @@ function GmailConnectBanner() {
     try {
       const res = await fetch('http://localhost:8000/api/emails/sync?limit=20');
       const data = await res.json() as { fetched: number; saved_to_crm: number };
-      setSyncMsg(`✅ ${data.fetched} fetched, ${data.saved_to_crm} new saved to CRM`);
+      setSyncMsg(`✅ ${data.fetched} fetched, ${data.saved_to_crm} new saved`);
     } catch { setSyncMsg('❌ Sync failed — check backend'); }
     setSyncing(false);
   };
 
-
-  if (status === 'connected') {
-    return (
-      <div className="flex items-center gap-3 p-3 rounded-xl mb-4"
-        style={{ background: 'rgba(52,199,89,0.08)', border: '1px solid rgba(52,199,89,0.25)' }}>
-        <CheckCircle size={16} color="#34c759" />
-        <span className="text-sm font-semibold" style={{ color: '#34c759' }}>Gmail Connected</span>
-        <button
-          onClick={handleSync}
-          disabled={syncing}
-          className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold"
-          style={{ background: '#34c759', color: '#fff', cursor: syncing ? 'not-allowed' : 'pointer', opacity: syncing ? 0.6 : 1 }}
-        >
-          {syncing ? <Loader size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-          {syncing ? 'Syncing…' : 'Sync Gmail'}
-        </button>
-        {syncMsg && <span className="text-xs ml-2" style={{ color: 'var(--text-secondary)' }}>{syncMsg}</span>}
-      </div>
-    );
-  }
+  const connected = gmailStatus === 'connected';
 
   return (
-    <div className="flex items-center gap-3 p-3 rounded-xl mb-4"
-      style={{ background: 'rgba(94,92,230,0.08)', border: '1px solid rgba(94,92,230,0.3)' }}>
-      <Mail size={16} color="#5e5ce6" />
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Connect Gmail to sync real emails</p>
-        <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>One-time OAuth setup — opens in a new window</p>
-      </div>
-      <button
-        onClick={handleConnect}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold flex-shrink-0"
-        style={{ background: '#5e5ce6', color: '#fff', cursor: 'pointer' }}
+    <div
+      className="flex items-center gap-3 p-3 rounded-xl mb-4"
+      style={{
+        background: connected ? 'rgba(52,199,89,0.08)' : 'rgba(94,92,230,0.07)',
+        border: `1px solid ${connected ? 'rgba(52,199,89,0.3)' : 'rgba(94,92,230,0.25)'}`,
+      }}
+    >
+      <div
+        className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+        style={{ background: connected ? 'rgba(52,199,89,0.15)' : 'rgba(94,92,230,0.15)' }}
       >
-        <Mail size={12} />
-        Connect Gmail
-      </button>
+        <Mail size={15} color={connected ? '#34c759' : '#5e5ce6'} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>Gmail</p>
+        <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+          {connected ? 'Connected · Real emails synced' : 'Connect to sync real incoming emails'}
+        </p>
+        {syncMsg && <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)', fontSize: 10 }}>{syncMsg}</p>}
+      </div>
+      {connected ? (
+        <button
+          onClick={handleSync} disabled={syncing}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold flex-shrink-0"
+          style={{ background: '#34c759', color: '#fff', cursor: syncing ? 'not-allowed' : 'pointer', opacity: syncing ? 0.7 : 1 }}
+        >
+          {syncing ? <Loader size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+          {syncing ? 'Syncing…' : 'Sync Gmail'}
+        </button>
+      ) : (
+        <button
+          onClick={handleConnect}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold flex-shrink-0"
+          style={{ background: '#5e5ce6', color: '#fff', cursor: 'pointer' }}
+        >
+          <Mail size={11} />
+          Connect Gmail
+        </button>
+      )}
     </div>
   );
 }

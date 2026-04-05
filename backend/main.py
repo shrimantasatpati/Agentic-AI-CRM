@@ -414,7 +414,7 @@ async def get_agent_status_live(db: Session = Depends(get_db)):
             "name": a["name"], "emoji": a["emoji"], "color": a["color"], "route": a["route"],
             "status": "active" if runs > 0 else "standby",
             "runs_today": runs,
-            "last_run": last.created_at.isoformat() if last and last.created_at else None,
+            "last_run": (last.created_at.isoformat() + "Z") if last and last.created_at else None,
         })
     return results
 
@@ -440,10 +440,46 @@ async def gmail_auth_start():
 @app.get("/api/auth/gmail/callback")
 async def gmail_auth_callback(code: str, state: str = ""):
     """Step 2 — Google redirects here after user approval."""
+    from fastapi.responses import HTMLResponse
     try:
         from services.gmail_service import complete_oauth_flow
         complete_oauth_flow(auth_code=code, redirect_uri="http://localhost:8000/api/auth/gmail/callback")
-        return {"status": "Gmail authorized! You can now use /api/emails/sync"}
+        # Return a friendly HTML page that auto-closes — no more blank popup
+        html = """<!DOCTYPE html>
+<html>
+<head>
+  <title>Gmail Connected</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+           display: flex; align-items: center; justify-content: center; height: 100vh;
+           margin: 0; background: #0a0a0f; color: #fff; }
+    .card { text-align: center; padding: 40px; background: rgba(255,255,255,0.05);
+            border-radius: 20px; border: 1px solid rgba(52,199,89,0.3); max-width: 320px; }
+    .icon { font-size: 48px; margin-bottom: 16px; }
+    h2 { margin: 0 0 8px; font-size: 20px; color: #34c759; }
+    p { margin: 0; color: rgba(255,255,255,0.6); font-size: 14px; }
+    .badge { display: inline-block; margin-top: 16px; padding: 6px 16px;
+             background: rgba(52,199,89,0.15); border: 1px solid rgba(52,199,89,0.3);
+             border-radius: 20px; font-size: 12px; color: #34c759; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">✅</div>
+    <h2>Gmail Connected!</h2>
+    <p>Your account has been authorized.<br>Returning to AI CRM…</p>
+    <div class="badge">This window will close automatically</div>
+  </div>
+  <script>
+    // Close popup and signal the parent window
+    setTimeout(() => {
+      if (window.opener) { window.opener.postMessage('gmail_auth_complete', '*'); }
+      window.close();
+    }, 2000);
+  </script>
+</body>
+</html>"""
+        return HTMLResponse(content=html)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -511,8 +547,79 @@ async def send_email_reply(req: SendReplyRequest, db: Session = Depends(get_db))
 
 
 # ============================================================================
-# GOOGLE CALENDAR — REAL AVAILABILITY + BOOKING
+# MEETING SCHEDULER — SYNC ENDPOINT (Agent LLM + Real Calendar Booking)
 # ============================================================================
+
+class ScheduleMeetingRequest(BaseModel):
+    title: str = ""
+    meeting_type: str = "demo"
+    duration: str = "30"
+    attendees: str = ""
+    notes: str = ""
+
+
+@app.post("/api/agents/schedule-meeting/sync")
+async def schedule_meeting_sync(req: ScheduleMeetingRequest, db: Session = Depends(get_db)):
+    """Schedule a meeting: LLM agent selects best slot + agenda, then books in Google Calendar."""
+    from datetime import timedelta, timezone, datetime as dt
+    attendee_list = [e.strip() for e in req.attendees.split(",") if e.strip()]
+
+    # Step 1: Run the meeting scheduler agent (LLM orchestration)
+    meeting_result = await orchestrator.meeting_agent.execute({
+        "action": "schedule",
+        "meeting_type": req.meeting_type,
+        "attendees": attendee_list,
+        "subject": req.title or f"{req.meeting_type.replace('_', ' ').title()} Meeting",
+        "duration": int(req.duration or "30"),
+        "notes": req.notes,
+    })
+
+    # Step 2: Try to book in Google Calendar (requires OAuth, graceful fallback)
+    calendar_result = None
+    best_slot = meeting_result.get("scheduled_time", "")
+    try:
+        if best_slot and len(best_slot) > 10:
+            # Parse ISO datetime from agent result
+            start_dt = dt.fromisoformat(best_slot.replace("Z", "+00:00"))
+        else:
+            # Fallback: next business day 10 AM UTC
+            start_dt = dt.now(timezone.utc) + timedelta(days=1)
+            while start_dt.weekday() >= 5:
+                start_dt += timedelta(days=1)
+            start_dt = start_dt.replace(hour=10, minute=0, second=0, microsecond=0)
+
+        end_dt = start_dt + timedelta(minutes=int(req.duration or "30"))
+        title = req.title or f"{req.meeting_type.replace('_', ' ').title()} Meeting"
+
+        from services.calendar_service import create_event, is_authenticated as cal_authed
+        if cal_authed():
+            calendar_result = create_event(
+                title=title,
+                start_iso=start_dt.isoformat(),
+                end_iso=end_dt.isoformat(),
+                attendee_emails=attendee_list,
+                description=req.notes,
+                add_meet_link=True,
+            )
+            # Save to CRM meetings table
+            from database.models import Meeting
+            meeting_record = Meeting(
+                title=title, meeting_type=req.meeting_type, scheduled_at=start_dt,
+                attendees=attendee_list,
+                status="confirmed" if calendar_result.get("success") else "pending",
+                extra_metadata=calendar_result,
+            )
+            db.add(meeting_record)
+            db.commit()
+        else:
+            calendar_result = {"success": False, "error": "Google Calendar not connected — connect via Gmail OAuth first"}
+    except Exception as e:
+        calendar_result = {"success": False, "error": str(e)}
+
+    meeting_result["calendar_booked"] = calendar_result
+    return meeting_result
+
+
 
 @app.get("/api/calendar/availability")
 async def get_calendar_availability(attendees: str = "", duration: int = 30, days_ahead: int = 7):

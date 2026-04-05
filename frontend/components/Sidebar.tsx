@@ -121,16 +121,21 @@ export default function Sidebar() {
         {/* Header */}
         <div className="p-4 border-b" style={{ borderColor: 'var(--border-primary)' }}>
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2.5">
               <div
-                className="w-7 h-7 rounded-lg flex items-center justify-center text-white text-xs font-bold"
-                style={{ background: 'linear-gradient(135deg, #0066cc, #5e5ce6)' }}
+                className="w-8 h-8 rounded-xl flex items-center justify-center text-white flex-shrink-0"
+                style={{ background: 'linear-gradient(135deg, #0066cc 0%, #5e5ce6 100%)', boxShadow: '0 2px 8px rgba(0,102,204,0.4)' }}
               >
-                AI
+                <Cpu size={15} color="#fff" />
               </div>
-              <span className="text-sm" style={{ color: 'var(--text-primary)', fontWeight: 700 }}>
-                AI CRM
-              </span>
+              <div className="flex flex-col leading-none">
+                <span style={{ color: 'var(--text-primary)', fontWeight: 800, fontSize: 15, letterSpacing: '-0.3px' }}>
+                  AI CRM
+                </span>
+                <span style={{ color: 'var(--text-tertiary)', fontSize: 10, fontWeight: 500, marginTop: 1 }}>
+                  Agentic Intelligence
+                </span>
+              </div>
             </div>
             <button className="btn-ghost p-1 md:hidden" onClick={() => setOpen(false)}>
               <X size={16} />
