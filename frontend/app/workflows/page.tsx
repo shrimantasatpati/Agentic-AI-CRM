@@ -9,32 +9,32 @@ import WorkflowSteps from '@/components/WorkflowSteps';
 // ============================================================
 
 const LEAD_STEPS = [
-  { name: 'Received lead data',        output: 'Lead data parsed and validated' },
-  { name: 'Extracting company domain', output: 'Domain extracted from email, company profile initiated' },
-  { name: 'Enriching contact data',    output: 'Company details, industry, and size retrieved from CRM' },
-  { name: 'Calculating lead score',    output: 'LLM scored lead based on intent signals and profile fit' },
-  { name: 'Identifying buying signals',output: 'Buying signals detected from email content and metadata' },
-  { name: 'Routing to sales team',     output: 'Lead routed based on score threshold and deal context' },
-  { name: 'Notifying downstream agents', output: 'Email Intelligence Agent triggered for follow-up actions' },
+  { name: 'Received lead data',        output: 'Lead email, name, company, and message parsed · CRM entry initiated' },
+  { name: 'Extracting company domain', output: 'Domain extracted from email · Company profile lookup started' },
+  { name: 'Enriching contact data',    output: 'Industry, company size, and seniority level identified from CRM' },
+  { name: 'Calculating lead score',    output: 'LLM scored lead on job title, intent, company fit, and urgency' },
+  { name: 'Identifying buying signals',output: 'Buying signals analyzed: demo request, urgency, budget, seniority' },
+  { name: 'Routing to sales team',     output: 'Lead routed to team based on score · Priority and SLA assigned' },
+  { name: 'Notifying downstream agents', output: 'Email Intelligence Agent triggered · Meeting Scheduler queued' },
 ];
 
 const EMAIL_STEPS = [
-  { name: 'Received trigger from Lead Agent', output: 'High-value lead handoff received from Lead Agent' },
-  { name: 'Analyzing sentiment context',      output: 'Sentiment analyzed via VADER + LLM context classification' },
-  { name: 'Categorizing email type',          output: 'Category determined from email content and intent signals' },
-  { name: 'Drafting personalized email',      output: 'Personalized response drafted using LLM with CRM context' },
-  { name: 'Optimizing subject line',          output: 'Subject line generated for maximum open rate' },
-  { name: 'Generating follow-up sequence',    output: 'Multi-touch follow-up sequence planned for next 7 days' },
+  { name: 'Received trigger from Lead Agent', output: 'Lead handoff received · Email content and metadata extracted' },
+  { name: 'Analyzing sentiment context',      output: 'VADER sentiment scored · Urgency and tone classified by LLM' },
+  { name: 'Categorizing email type',          output: 'Email category determined · Priority level assigned by agent' },
+  { name: 'Drafting personalized email',      output: 'LLM drafted personalized reply using CRM contact context' },
+  { name: 'Optimizing subject line',          output: 'Subject line generated to maximize open rate for this persona' },
+  { name: 'Generating follow-up sequence',    output: 'Multi-touch follow-up sequence scheduled for the next 7 days' },
 ];
 
 const MEETING_STEPS = [
-  { name: 'Received scheduling request',      output: 'Request parsed · Meeting type and context extracted' },
-  { name: 'Checking attendee calendars',      output: 'Attendee calendars queried via Google Calendar API' },
-  { name: 'Finding optimal time slot',        output: 'Best available slot selected based on mutual availability' },
-  { name: 'Generating meeting agenda',        output: 'LLM generated agenda based on meeting type and CRM context' },
+  { name: 'Received scheduling request',      output: 'Meeting type, duration, attendees, and context parsed by agent' },
+  { name: 'Checking attendee calendars',      output: 'Google Calendar freebusy API queried for all attendees' },
+  { name: 'Finding optimal time slot',        output: 'Mutual availability windows identified · Best slot selected' },
+  { name: 'Generating meeting agenda',        output: 'LLM generated agenda items based on meeting type and context' },
   { name: 'Creating prep materials',          output: 'Talking points, success criteria, and collateral assembled' },
   { name: 'Sending calendar invites',         output: 'Google Calendar event created · Invites sent to all attendees' },
-  { name: 'Setting smart reminders',          output: 'Reminders set: 24h and 1h before the event' },
+  { name: 'Setting smart reminders',          output: 'Email reminder: 24h before · Popup reminder: 30 min before' },
 ];
 
 // ============================================================
@@ -120,10 +120,16 @@ function WorkflowCard({
       <div className="grid grid-cols-2 gap-3 mb-4">
         <div className="p-3 rounded-xl" style={{ background: 'var(--bg-input)' }}>
           <p className="text-xs font-semibold mb-1" style={{ color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Last Run</p>
-          <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{last.timestamp}</p>
-          <span className={`badge badge-${last.status === 'success' ? 'green' : 'red'} mt-1`}>
-            {last.status} · {last.duration}
-          </span>
+          {last ? (
+            <>
+              <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{last.timestamp}</p>
+              <span className={`badge badge-${last.status === 'success' ? 'green' : 'red'} mt-1`}>
+                {last.status} · {last.duration}
+              </span>
+            </>
+          ) : (
+            <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>Not yet run</p>
+          )}
         </div>
         <div className="p-3 rounded-xl" style={{ background: 'var(--bg-input)' }}>
           <p className="text-xs font-semibold mb-1" style={{ color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Next Run</p>

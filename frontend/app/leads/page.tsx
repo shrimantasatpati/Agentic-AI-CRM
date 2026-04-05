@@ -11,13 +11,13 @@ import type { LeadQualificationResult } from '@/types';
 const COLOR = '#0066cc';
 
 const STEPS = [
-  { name: 'Received lead data', output: 'Lead data parsed and validated' },
-  { name: 'Extracting company domain', output: 'Domain extracted from email · Company profile initiated' },
-  { name: 'Enriching contact data', output: 'Company details and industry retrieved from CRM context' },
-  { name: 'Calculating lead score', output: 'LLM scored lead based on profile fit and intent signals' },
-  { name: 'Identifying buying signals', output: 'Buying signals detected from message content and metadata' },
-  { name: 'Routing to sales team', output: 'Lead routed based on score threshold and SLA requirements' },
-  { name: 'Notifying downstream agents', output: 'Email Intelligence Agent triggered · CRM entry created' },
+  { name: 'Received lead data', output: 'Lead email, name, company, and message parsed · CRM entry initiated' },
+  { name: 'Extracting company domain', output: 'Domain extracted from email · Company profile lookup started' },
+  { name: 'Enriching contact data', output: 'Industry, company size, and seniority level identified from CRM' },
+  { name: 'Calculating lead score', output: 'LLM scored lead on job title, intent, company fit, and urgency' },
+  { name: 'Identifying buying signals', output: 'Buying signals analyzed: demo request, urgency, budget, seniority' },
+  { name: 'Routing to sales team', output: 'Lead routed to team based on score · Priority and SLA assigned' },
+  { name: 'Notifying downstream agents', output: 'Email Intelligence Agent triggered · CRM entry saved to database' },
 ];
 
 const EXAMPLES = [
