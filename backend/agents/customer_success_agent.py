@@ -380,63 +380,40 @@ Return exactly:
             from database.models import Customer
             customer = db.query(Customer).filter(Customer.id == customer_id).first()
             if customer:
-                return {
-                    "id": customer.id,
-                    "name": customer.name,
-                    "industry": customer.industry,
-                    "total_spend": customer.total_spend or 0,
-                    "status": customer.status,
-                    "health_score": customer.health_score or 50,
-                    "churn_risk": customer.churn_risk or "low",
-                    "plan": "Enterprise", # Mock
-                    "mrr": (customer.total_spend or 5000) / 12,
-                    "logins_per_week": 10,
-                    "features_used": 7,
-                    "total_features": 10,
-                    "daily_active_users": 20,
-                    "license_usage_percent": 85,
-                    "days_since_login": 1,
-                    "support_tickets_30d": 3,
-                    "training_attended": 2,
-                    "community_posts": 4,
-                    "critical_tickets": 0,
-                    "avg_resolution_hours": 12,
-                    "csat_score": 4.8,
-                    "payment_delays": 0,
-                    "usage_trend": "increasing",
-                    "engagement_score": 88,
-                    "days_to_renewal": 120,
-                    "team_size": 50,
-                    "user_growth_30d": 10
-                }
+                    age_days_since_join = (datetime.now() - customer.created_at).days if hasattr(customer, 'created_at') and customer.created_at else 0
+                    return {
+                        "id": customer.id,
+                        "name": customer.name,
+                        "email": getattr(customer, "email", ""),
+                        "industry": customer.industry,
+                        "total_spend": customer.total_spend or 0,
+                        "status": customer.status,
+                        "health_score": customer.health_score or 50,
+                        "churn_risk": customer.churn_risk or "low",
+                        "plan": getattr(customer, "plan", "Unknown"),
+                        "mrr": (customer.total_spend or 0) / max(1, age_days_since_join // 30),
+                        "logins_per_week": getattr(customer, "logins_per_week", 0),
+                        "features_used": getattr(customer, "features_used", 0),
+                        "total_features": getattr(customer, "total_features", 10),
+                        "daily_active_users": getattr(customer, "daily_active_users", 0),
+                        "license_usage_percent": getattr(customer, "license_usage_percent", 0),
+                        "days_since_login": getattr(customer, "days_since_login", 0),
+                        "support_tickets_30d": getattr(customer, "support_tickets_30d", 0),
+                        "training_attended": getattr(customer, "training_attended", 0),
+                        "community_posts": getattr(customer, "community_posts", 0),
+                        "critical_tickets": getattr(customer, "critical_tickets", 0),
+                        "avg_resolution_hours": getattr(customer, "avg_resolution_hours", 0),
+                        "csat_score": getattr(customer, "csat_score", 0),
+                        "payment_delays": getattr(customer, "payment_delays", 0),
+                        "usage_trend": getattr(customer, "usage_trend", "unknown"),
+                        "engagement_score": getattr(customer, "engagement_score", 0),
+                        "days_to_renewal": getattr(customer, "days_to_renewal", 0),
+                        "team_size": getattr(customer, "team_size", 0),
+                        "user_growth_30d": getattr(customer, "user_growth_30d", 0),
+                    }
             return {"error": "Customer not found"}
 
-        # Placeholder
-        return {
-            "id": customer_id,
-            "plan": "Professional",
-            "mrr": 499,
-            "logins_per_week": 12,
-            "features_used": 6,
-            "total_features": 10,
-            "daily_active_users": 15,
-            "license_usage_percent": 75,
-            "days_since_login": 2,
-            "support_tickets_30d": 2,
-            "training_attended": 3,
-            "community_posts": 5,
-            "critical_tickets": 0,
-            "avg_resolution_hours": 24,
-            "csat_score": 4,
-            "days_since_payment": 15,
-            "payment_delays": 0,
-            "usage_trend": "stable",
-            "engagement_score": 72,
-            "days_to_renewal": 45,
-            "team_size": 20,
-            "user_growth_30d": 5,
-            "industry": "Technology"
-        }
+        return {"error": "No database session provided"}
 
     def _calculate_risk_level(self, health_score: int, factor_count: int) -> str:
         """Calculate risk level from score and factors"""

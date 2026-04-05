@@ -492,7 +492,8 @@ async def gmail_auth_status():
     from pathlib import Path
     import json
 
-    token_path = Path("credentials/gmail_token.json")
+    # Use absolute path matching what gmail_service.py / calendar_service.py use
+    token_path = Path(__file__).resolve().parent / "credentials" / "gmail_token.json"
     token_exists = token_path.exists()
     token_scopes: list = []
 

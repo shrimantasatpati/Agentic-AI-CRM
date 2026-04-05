@@ -385,23 +385,8 @@ Return exactly:
                 }
             return {"error": "Deal not found"}
         
-        # Placeholder
-        return {
-            "id": deal_id,
-            "value": 50000,
-            "stage": "proposal",
-            "days_in_stage": 12,
-            "last_contact_days_ago": 3,
-            "engagement_level": "medium",
-            "decision_maker_engaged": True,
-            "competitor_activity": "low",
-            "budget_confirmed": True,
-            "timeline_confirmed": False,
-            "age_days": 45,
-            "activities_count": 15,
-            "proposal_sent": True,
-            "blockers": []
-        }
+        # No db session provided \u2014 cannot fabricate deal data
+        return {"error": "No database session provided"}
 
     async def _get_active_deals(self) -> List[Dict[str, Any]]:
         """Get all active deals"""

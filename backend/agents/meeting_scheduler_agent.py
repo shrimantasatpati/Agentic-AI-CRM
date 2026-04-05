@@ -441,30 +441,75 @@ Return exactly:
         attendees: List[str],
         meeting_type: str
     ) -> Dict[str, Any]:
-        """Get CRM context for meeting"""
-        # Placeholder - would query CRM
-        return {
-            "company": "Acme Corp",
+        """Get CRM context for meeting — queries real DB by attendee email."""
+        context = {
+            "company": "Unknown",
             "contact_name": attendees[0] if attendees else "Unknown",
-            "deal_stage": "proposal",
+            "deal_stage": "qualification",
             "meeting_type": meeting_type,
-            "timezone": "America/New_York",
-            "priority": "high",
-            "topics": ["product demo", "pricing"],
-            "previous_meetings": 2,
+            "timezone": "UTC",
+            "priority": "medium",
+            "topics": [],
+            "previous_meetings": 0,
             "interaction_history": []
         }
+        try:
+            from database.db import SessionLocal
+            from database.models import Lead, Customer
+            db = SessionLocal()
+            try:
+                primary_email = attendees[0] if attendees else ""
+                # Search leads by email
+                lead = db.query(Lead).filter(Lead.email == primary_email).first()
+                if lead:
+                    context["company"] = lead.company or "Unknown"
+                    context["contact_name"] = lead.name or primary_email
+                    context["deal_stage"] = getattr(lead, "status", "qualification")
+                    context["priority"] = "high" if getattr(lead, "score", 0) >= 70 else "medium"
+                    context["topics"] = [meeting_type, "product review"]
+                else:
+                    # Try customers table
+                    customer = db.query(Customer).filter(Customer.email == primary_email).first()
+                    if customer:
+                        context["company"] = customer.company or "Unknown"
+                        context["contact_name"] = customer.name or primary_email
+                        context["deal_stage"] = "customer"
+                        context["priority"] = "high" if getattr(customer, "health_score", 50) < 50 else "medium"
+                import logging
+                logging.getLogger(__name__).info(
+                    f"[MeetingAgent] Context for {primary_email}: company={context['company']}, stage={context['deal_stage']}"
+                )
+            finally:
+                db.close()
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"[MeetingAgent] DB context lookup failed: {e}")
+        return context
 
     async def _get_meeting_data(self, meeting_id: str) -> Dict[str, Any]:
-        """Get meeting data from database"""
-        # Placeholder
-        return {
-            "id": meeting_id,
-            "type": "demo",
-            "attendees": ["john@acme.com"],
-            "agenda": ["Intro", "Demo", "Q&A"],
-            "notes": ""
-        }
+        """Get meeting data from CRM database."""
+        try:
+            from database.db import SessionLocal
+            from database.models import Meeting
+            db = SessionLocal()
+            try:
+                meeting = db.query(Meeting).filter(Meeting.id == meeting_id).first()
+                if meeting:
+                    return {
+                        "id": str(meeting.id),
+                        "type": meeting.meeting_type or "general",
+                        "attendees": meeting.attendees or [],
+                        "agenda": (meeting.extra_metadata or {}).get("agenda", []),
+                        "notes": (meeting.extra_metadata or {}).get("notes", ""),
+                        "scheduled_time": meeting.scheduled_at.isoformat() if meeting.scheduled_at else None,
+                        "duration_minutes": 30,
+                    }
+            finally:
+                db.close()
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"[MeetingAgent] _get_meeting_data failed: {e}")
+        return {"id": meeting_id, "type": "general", "attendees": [], "agenda": [], "notes": ""}
 
     async def _create_meeting_briefing(
         self,

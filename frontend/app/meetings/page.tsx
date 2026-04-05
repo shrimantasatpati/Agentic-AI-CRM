@@ -8,13 +8,13 @@ import type { MeetingSchedulerResult } from '@/types';
 const COLOR = '#bf5af2';
 
 const STEPS = [
-  { name: 'Parsing meeting request', output: 'Request parsed · Type: Executive Demo · Duration: 60 min' },
-  { name: 'Checking attendee calendars', output: '3 attendees found · 2 calendars fetched · 1 external' },
-  { name: 'Finding available slots', output: '8 mutual availability windows identified this week' },
-  { name: 'Selecting optimal time', output: 'Optimal slot: Tue Apr 8, 2:00 PM — score: 94/100' },
-  { name: 'Generating meeting agenda', output: '5-point agenda created based on meeting type and context' },
+  { name: 'Parsing meeting request', output: 'Request parsed · Type & duration extracted from input' },
+  { name: 'Checking attendee calendars', output: 'Attendee calendars queried · Freebusy data fetched from Google' },
+  { name: 'Finding available slots', output: 'Mutual availability windows identified across business hours' },
+  { name: 'Selecting optimal time', output: 'LLM selected best slot based on context and availability' },
+  { name: 'Generating meeting agenda', output: 'Agenda created based on meeting type and CRM context' },
   { name: 'Creating prep materials', output: 'Talking points, success criteria, and collateral assembled' },
-  { name: 'Setting reminders', output: 'Reminders set: 24h, 1h before · Calendar invites queued' },
+  { name: 'Setting reminders', output: 'Reminders configured · Calendar event created with invites' },
 ];
 
 const EXAMPLES = [
