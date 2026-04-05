@@ -93,6 +93,13 @@ def seed_all():
     try:
         print("🌱 Starting seed data insertion...")
 
+        # ── Guard: skip if already seeded ─────────────────────────────────────
+        existing_count = db.query(Company).count()
+        if existing_count > 0:
+            print(f"\n✅ Database already seeded ({existing_count} companies found) — skipping.")
+            print("   To re-seed, delete backend/ai_crm.db and run db_setup.py again.")
+            return
+
         # ── Companies ─────────────────────────────────────────────────────────
         print("  → Seeding companies...")
         company_objs = []

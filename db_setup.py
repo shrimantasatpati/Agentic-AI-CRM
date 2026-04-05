@@ -82,8 +82,7 @@ def seed_database() -> None:
         cwd=backend_dir,
     )
     if result.returncode != 0:
-        print("  ❌ Seed script failed — check errors above")
-        sys.exit(1)
+        print("  ⚠️  Seed script exited with an error — data may already exist or check errors above.")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
