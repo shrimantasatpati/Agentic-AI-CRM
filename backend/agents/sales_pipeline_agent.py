@@ -57,19 +57,13 @@ class SalesPipelineAgent(BaseAgent):
         if "error" in deal_data:
             return deal_data
 
-        # Calculate health score
-        health_score = await self.calculate_health_score(deal_data)
+        # OPTIMIZED: Single LLM call returns health_score + close_probability + next_actions
+        health_score, close_probability, next_actions = await self._analyze_deal_single_call(deal_data)
 
-        # Predict close probability
-        close_probability = await self.predict_close_probability(deal_data)
-
-        # Check if stalled
+        # Check if stalled (rule-based — no LLM needed)
         is_stalled = await self.is_deal_stalled(deal_data)
 
-        # Recommend next actions
-        next_actions = await self.recommend_actions(deal_data, health_score, is_stalled)
-
-        # Forecast close date
+        # Forecast close date (rule-based — no LLM needed)
         forecast_date = await self.forecast_close_date(deal_data, close_probability)
 
         result = {
@@ -104,6 +98,45 @@ class SalesPipelineAgent(BaseAgent):
         await self.log_activity("deal_analyzed", result)
 
         return result
+
+    async def _analyze_deal_single_call(self, deal_data: Dict[str, Any]):
+        """Single optimized LLM call: health_score + close_probability + actions in one JSON response"""
+        import json, re
+
+        combined_prompt = f"""Analyze this sales deal and return ONLY a valid JSON object:
+
+Deal:
+- Value: ${deal_data.get('value', 0):,}
+- Stage: {deal_data.get('stage')}
+- Days in stage: {deal_data.get('days_in_stage', 0)}
+- Last contact: {deal_data.get('last_contact_days_ago', 0)} days ago
+- Decision maker engaged: {deal_data.get('decision_maker_engaged', False)}
+- Budget confirmed: {deal_data.get('budget_confirmed', False)}
+- Stage close rate: {self._get_stage_close_rate(deal_data.get('stage'))}%
+
+Return exactly:
+{{
+  "health_score": <integer 0-100>,
+  "close_probability": <integer 0-100>,
+  "next_actions": ["action1", "action2", "action3"]
+}}"""
+
+        raw = await self.think(combined_prompt)
+
+        try:
+            json_match = re.search(r'\{{.*\}}', raw, re.DOTALL)
+            parsed = json.loads(json_match.group() if json_match else raw)
+        except Exception:
+            parsed = {}
+
+        health_score    = min(100, max(0, int(parsed.get("health_score", 50))))
+        close_probability = min(100, max(0, int(parsed.get("close_probability", 50))))
+        next_actions    = parsed.get("next_actions", [])
+        if isinstance(next_actions, str):
+            next_actions = [s.strip() for s in next_actions.split("\n") if s.strip()]
+
+        return health_score, close_probability, next_actions
+
 
     async def calculate_health_score(self, deal_data: Dict[str, Any]) -> int:
         """Calculate deal health score (0-100)"""

@@ -61,28 +61,32 @@ class MeetingSchedulerAgent(BaseAgent):
         # Determine optimal duration
         duration = self.meeting_types.get(meeting_type, 30)
 
-        # Find available time slots
+        # Find available time slots (rule-based — no LLM needed)
         available_slots = await self.find_available_slots(
             attendees,
             duration,
             preferred_time
         )
 
-        # Get context from CRM
+        # Get context from CRM (rule-based — no LLM needed)
         context = await self._get_meeting_context(attendees, meeting_type)
 
-        # Select best time slot
-        best_slot = await self.select_best_slot(available_slots, context)
-
-        # Create meeting prep
-        prep_materials = await self.create_meeting_prep(
-            meeting_type,
-            attendees,
-            context
+        # OPTIMIZED: Single LLM call returns best_slot + agenda + prep_notes together
+        best_slot, agenda, prep_notes = await self._schedule_meeting_single_call(
+            meeting_type, available_slots, context, attendees
         )
 
-        # Generate agenda
-        agenda = await self.generate_agenda(meeting_type, context)
+        prep_materials = {
+            "prep_notes": prep_notes,
+            "account_info": context,
+            "previous_interactions": context.get("interaction_history", []),
+            "recommended_collateral": self._get_collateral(meeting_type),
+            "success_criteria": [
+                "Understand customer's pain points",
+                "Demonstrate value proposition",
+                "Secure next steps commitment"
+            ]
+        }
 
         meeting = {
             "meeting_id": self._generate_meeting_id(),
@@ -107,6 +111,55 @@ class MeetingSchedulerAgent(BaseAgent):
         await self.log_activity("meeting_scheduled", meeting)
 
         return meeting
+
+    async def _schedule_meeting_single_call(self, meeting_type: str, available_slots: List[str], context: Dict[str, Any], attendees: List[str]):
+        """Single optimized LLM call: slot selection + agenda + prep in one JSON response"""
+        import json, re
+
+        slots_text = "\n".join([f"{i+1}. {s}" for i, s in enumerate(available_slots)]) if available_slots else "No slots available"
+
+        combined_prompt = f"""You are scheduling a {meeting_type} meeting. Return ONLY a valid JSON object:
+
+Available time slots:
+{slots_text}
+
+Context:
+- Customer timezone: {context.get('timezone', 'Unknown')}
+- Deal stage: {context.get('deal_stage', 'Unknown')}
+- Priority: {context.get('priority', 'medium')}
+- Attendees: {', '.join(attendees)}
+
+Return exactly:
+{{
+  "best_slot_index": <integer, 1-based index of best slot from list above, or 1 if unsure>,
+  "agenda": ["5 min - Welcome & introductions", "20 min - Demo", "10 min - Q&A", "5 min - Next steps"],
+  "prep_notes": "Key talking points and preparation notes for this {meeting_type} meeting."
+}}"""
+
+        raw = await self.think(combined_prompt)
+
+        try:
+            json_match = re.search(r'\{{.*\}}', raw, re.DOTALL)
+            parsed = json.loads(json_match.group() if json_match else raw)
+        except Exception:
+            parsed = {}
+
+        # Select slot
+        slot_idx = int(parsed.get("best_slot_index", 1)) - 1
+        if available_slots:
+            best_slot = available_slots[max(0, min(slot_idx, len(available_slots)-1))]
+        else:
+            import datetime
+            tomorrow = datetime.datetime.now() + datetime.timedelta(days=1)
+            while tomorrow.weekday() >= 5:
+                tomorrow += datetime.timedelta(days=1)
+            best_slot = tomorrow.replace(hour=10, minute=0).isoformat()
+
+        agenda = parsed.get("agenda", ["Introduction", "Discussion", "Next steps"])
+        prep_notes = parsed.get("prep_notes", f"{meeting_type.replace('_', ' ').title()} meeting preparation")
+
+        return best_slot, agenda, prep_notes
+
 
     async def find_available_slots(
         self,

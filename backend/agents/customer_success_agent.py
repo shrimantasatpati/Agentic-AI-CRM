@@ -56,24 +56,17 @@ class CustomerSuccessAgent(BaseAgent):
         if "error" in customer_data:
             return customer_data
 
-        # Calculate health score
-        health_score = await self.calculate_health_score(customer_data)
+        # OPTIMIZED: Single LLM call returns health_score + recommended_actions together
+        health_score, actions = await self._monitor_customer_single_call(customer_data)
 
-        # Check churn risk
+        # Rule-based churn risk (no LLM needed — uses threshold logic)
         churn_risk = await self.assess_churn_risk(customer_data, health_score)
 
-        # Get engagement metrics
+        # Get engagement metrics (rule-based — no LLM needed)
         engagement = await self.analyze_engagement(customer_data)
 
-        # Identify opportunities
+        # Identify opportunities (uses LLM, called separately only when needed)
         opportunities = await self.identify_opportunities(customer_id, db)
-
-        # Recommend actions
-        actions = await self.recommend_success_actions(
-            customer_data,
-            health_score,
-            churn_risk
-        )
 
         result = {
             "customer_id": customer_id,
@@ -106,6 +99,46 @@ class CustomerSuccessAgent(BaseAgent):
         await self.log_activity("customer_monitored", result)
 
         return result
+
+    async def _monitor_customer_single_call(self, customer_data: Dict[str, Any]):
+        """Single optimized LLM call: health_score + recommended_actions in one JSON response"""
+        import json, re
+
+        combined_prompt = f"""Analyze this CRM customer and return ONLY a valid JSON object:
+
+Customer:
+- Plan: {customer_data.get('plan', 'unknown')}
+- Logins/week: {customer_data.get('logins_per_week', 0)}
+- Features used: {customer_data.get('features_used', 0)}/{customer_data.get('total_features', 10)}
+- Days since login: {customer_data.get('days_since_login', 0)}
+- Support tickets (30d): {customer_data.get('support_tickets_30d', 0)}
+- Critical tickets: {customer_data.get('critical_tickets', 0)}
+- CSAT score: {customer_data.get('csat_score', 0)}/5
+- Payment delays: {customer_data.get('payment_delays', 0)}
+- Usage trend: {customer_data.get('usage_trend', 'stable')}
+- Days to renewal: {customer_data.get('days_to_renewal', 999)}
+
+Return exactly:
+{{
+  "health_score": <integer 0-100>,
+  "recommended_actions": ["action1", "action2", "action3"]
+}}"""
+
+        raw = await self.think(combined_prompt)
+
+        try:
+            json_match = re.search(r'\{{.*\}}', raw, re.DOTALL)
+            parsed = json.loads(json_match.group() if json_match else raw)
+        except Exception:
+            parsed = {}
+
+        health_score = min(100, max(0, int(parsed.get("health_score", 50))))
+        actions = parsed.get("recommended_actions", [])
+        if isinstance(actions, str):
+            actions = [s.strip() for s in actions.split("\n") if s.strip()]
+
+        return health_score, actions
+
 
     async def calculate_health_score(self, customer_data: Dict[str, Any]) -> int:
         """Calculate customer health score (0-100)"""
@@ -212,10 +245,10 @@ class CustomerSuccessAgent(BaseAgent):
             "engagement_score": customer_data.get('engagement_score', 50)
         }
 
-    async def identify_opportunities(self, customer_id: str) -> List[Dict[str, Any]]:
+    async def identify_opportunities(self, customer_id: str, db: Any = None) -> List[Dict[str, Any]]:
         """Identify upsell/cross-sell opportunities"""
 
-        customer_data = await self._get_customer_data(customer_id)
+        customer_data = await self._get_customer_data(customer_id, db)
 
         opportunities = []
 

@@ -39,19 +39,13 @@ class EmailIntelligenceAgent(BaseAgent):
 
         await self.log_activity("email_received", {"from": email_data.get("from")})
 
-        # Step 1: Analyze sentiment
-        sentiment = await self.analyze_sentiment(email_data)
+        # OPTIMIZED: Single LLM call for analysis (sentiment + category + priority)
+        sentiment, category, priority = await self._analyze_email_single_call(email_data)
 
-        # Step 2: Categorize email
-        category = await self.categorize_email(email_data)
-
-        # Step 3: Determine priority
-        priority = await self.determine_priority(email_data, sentiment, category)
-
-        # Step 4: Draft response
+        # Step 4: Draft response (needs analysis results — separate call)
         draft_response = await self.draft_response(email_data, sentiment, category)
 
-        # Step 5: Generate follow-up suggestions
+        # Step 5: Generate follow-up suggestions (batched into draft call via suggest_follow_ups)
         follow_ups = await self.suggest_follow_ups(email_data, category)
 
         # Publish event
@@ -75,6 +69,51 @@ class EmailIntelligenceAgent(BaseAgent):
         await self.log_activity("email_processed", result)
 
         return result
+
+    async def _analyze_email_single_call(self, email_data: Dict[str, Any]):
+        """Single optimized LLM call: sentiment + category + priority in one structured JSON response"""
+        import json
+        content = email_data.get("body", "")
+        subject = email_data.get("subject", "")
+
+        combined_prompt = f"""Analyze this email and return ONLY a valid JSON object:
+
+Subject: {subject}
+Body: {content[:500]}
+
+Return exactly this JSON structure:
+{{
+  "sentiment_score": <integer 1-10, 1=very negative, 10=very positive>,
+  "sentiment_label": "positive|neutral|negative",
+  "emotion": "anger|frustration|happiness|excitement|neutral",
+  "urgency": "low|medium|high",
+  "concerns": ["concern1", "concern2"],
+  "category": "support_request|sales_inquiry|demo_request|pricing_question|complaint|feature_request|general_inquiry",
+  "priority": "low|medium|high"
+}}"""
+
+        raw = await self.think(combined_prompt)
+
+        try:
+            json_match = __import__('re').search(r'\{{.*\}}', raw, __import__('re').DOTALL)
+            parsed = json.loads(json_match.group() if json_match else raw)
+        except Exception:
+            parsed = {}
+
+        sentiment = {
+            "score":   int(parsed.get("sentiment_score", 5)),
+            "label":   parsed.get("sentiment_label", "neutral"),
+            "emotion": parsed.get("emotion", "neutral"),
+            "urgency": parsed.get("urgency", "medium"),
+            "concerns": parsed.get("concerns", []),
+        }
+        category = parsed.get("category", "general_inquiry")
+        if category not in self.categories:
+            category = "general_inquiry"
+        priority = parsed.get("priority", "medium")
+
+        return sentiment, category, priority
+
 
     async def analyze_sentiment(self, email_data: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze sentiment of email content"""

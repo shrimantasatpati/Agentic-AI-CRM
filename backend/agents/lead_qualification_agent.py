@@ -3,6 +3,7 @@
 from typing import Dict, Any
 from .base_agent import BaseAgent
 import re
+import json
 
 
 class LeadQualificationAgent(BaseAgent):
@@ -54,15 +55,10 @@ class LeadQualificationAgent(BaseAgent):
                     "lead_status": existing_contact.lead_status
                 })
 
-        enriched_data = await self.enrich_lead(lead_data)
+        # OPTIMIZED: Single LLM call returns enrichment + score + signals together
+        enriched_data, score, signals = await self._qualify_lead_single_call(lead_data)
 
-        # Step 2: Score the lead
-        score = await self.score_lead(enriched_data)
-
-        # Step 3: Identify buying signals
-        signals = await self.identify_buying_signals(enriched_data)
-
-        # Step 4: Route to appropriate team
+        # Step 4: Route to appropriate team (rule-based — no LLM needed)
         routing = await self.route_lead(score, signals)
 
         # Step 5: Update DB if available
@@ -94,6 +90,58 @@ class LeadQualificationAgent(BaseAgent):
         await self.log_activity("lead_qualified", result)
 
         return result
+
+    async def _qualify_lead_single_call(self, lead_data: Dict[str, Any]):
+        """Single optimized LLM call: enrichment + score + signals in one structured JSON response"""
+        email = lead_data.get("email", "")
+        domain = email.split("@")[-1] if "@" in email else ""
+
+        combined_prompt = f"""Analyze this lead and return a single JSON object with exactly these fields:
+
+Lead Data:
+Email: {email}
+Name: {lead_data.get('name', lead_data.get('first_name', 'Unknown'))}
+Company Domain: {domain}
+Job Title: {lead_data.get('job_title', 'Unknown')}
+
+Return ONLY valid JSON in this exact format:
+{{
+  "company_size": "small|medium|large|enterprise",
+  "industry": "Technology|Finance|Healthcare|Retail|Other",
+  "seniority": "entry|mid|senior|executive",
+  "budget_likelihood": "low|medium|high",
+  "score": <integer 0-100>,
+  "signals": ["signal1", "signal2", "signal3"]
+}}
+
+Scoring guide: Enterprise+Executive+Tech = 80-100, Mid-market = 50-79, SMB = 30-49, Low-value = 0-29.
+Signals: identify any buying intent indicators from the email domain and job title."""
+
+        raw = await self.think(combined_prompt)
+
+        # Parse JSON result
+        try:
+            # Extract JSON block even if wrapped in markdown
+            json_match = re.search(r'\{.*\}', raw, re.DOTALL)
+            parsed = json.loads(json_match.group() if json_match else raw)
+        except Exception:
+            parsed = {}
+
+        enriched = {
+            **lead_data,
+            "domain": domain,
+            "company_size": parsed.get("company_size", "unknown"),
+            "industry": parsed.get("industry", "unknown"),
+            "seniority": parsed.get("seniority", "unknown"),
+            "budget_likelihood": parsed.get("budget_likelihood", "unknown"),
+            "enriched_at": self._get_timestamp(),
+        }
+        score = min(100, max(0, int(parsed.get("score", 50))))
+        signals = parsed.get("signals", [])
+        if isinstance(signals, str):
+            signals = [s.strip() for s in signals.split("\n") if s.strip()]
+
+        return enriched, score, signals
 
     async def enrich_lead(self, lead_data: Dict[str, Any]) -> Dict[str, Any]:
         """Enrich lead data from public sources"""
@@ -235,4 +283,4 @@ class LeadQualificationAgent(BaseAgent):
     def _get_timestamp(self) -> str:
         """Get current timestamp"""
         from datetime import datetime
-        return datetime.utcnow().isoformat()
+        return datetime.utcnow().isoformat() + "Z"
