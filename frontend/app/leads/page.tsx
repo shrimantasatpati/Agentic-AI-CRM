@@ -71,6 +71,7 @@ export default function LeadsPage() {
   const [result, setResult]     = useState<LeadQualificationResult | null>(null);
   const [isComplete, setIsComplete] = useState(false);
   const [error, setError]       = useState<string | null>(null);
+  const [emailToast, setEmailToast] = useState<string | null>(null);
 
   const handleRun = useCallback(async (formData: Record<string, string>) => {
     setError(null);
@@ -92,6 +93,13 @@ export default function LeadsPage() {
     if (!filled.score_breakdown) filled.score_breakdown = MOCK_RESULT.score_breakdown;
     setResult(filled);
     setIsComplete(true);
+    // Show auto-email toast if score >= 70
+    const score = filled.score ?? 0;
+    if (score >= 70) {
+      const toEmail = filled.email || formData.email || 'the lead';
+      setEmailToast(`✉️ Auto-email sent to ${toEmail} · Score: ${score}/100 · Priority: ${filled.routing?.priority?.toUpperCase() || 'HIGH'}`);
+      setTimeout(() => setEmailToast(null), 7000);
+    }
   }, []);
 
   const scoreData = result
@@ -102,6 +110,25 @@ export default function LeadsPage() {
     : [];
 
   return (
+    <>
+      {/* Auto-email sent toast */}
+      {emailToast && (
+        <div
+          className="animate-fade-in-up"
+          style={{
+            position: 'fixed', top: 24, right: 24, zIndex: 9999,
+            background: 'rgba(52,199,89,0.95)', color: '#fff',
+            padding: '14px 20px', borderRadius: 14, fontWeight: 600,
+            fontSize: 14, maxWidth: 420, boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+            backdropFilter: 'blur(12px)',
+          }}
+        >
+          {emailToast}
+          <div style={{ fontSize: 11, opacity: 0.85, marginTop: 4 }}>
+            Sent via Gmail API · Lead qualification complete
+          </div>
+        </div>
+      )}
     <AgentPageLayout
       agentName="Lead Qualification"
       agentDescription="Scores, enriches, and routes incoming leads using AI-powered analysis and buying signal detection."
@@ -198,5 +225,6 @@ export default function LeadsPage() {
         </div>
       )}
     />
+    </>
   );
 }
