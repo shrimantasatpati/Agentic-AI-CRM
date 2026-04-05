@@ -54,7 +54,12 @@ class MeetingSchedulerAgent(BaseAgent):
 
         # Extract meeting details
         meeting_type = request.get("meeting_type", "general")
-        attendees = request.get("attendees", [])
+        # Normalize attendees: form sends a string, agent expects a list
+        raw_attendees = request.get("attendees", [])
+        if isinstance(raw_attendees, str):
+            attendees = [e.strip() for e in raw_attendees.split(",") if e.strip()]
+        else:
+            attendees = list(raw_attendees) if raw_attendees else []
         subject = request.get("subject", "")
         preferred_time = request.get("preferred_time")
 
@@ -127,7 +132,7 @@ Context:
 - Customer timezone: {context.get('timezone', 'Unknown')}
 - Deal stage: {context.get('deal_stage', 'Unknown')}
 - Priority: {context.get('priority', 'medium')}
-- Attendees: {', '.join(attendees)}
+- Attendees: {', '.join(attendees if isinstance(attendees, list) else [a.strip() for a in str(attendees).split(',') if a.strip()])}
 
 Return exactly:
 {{

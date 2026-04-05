@@ -151,21 +151,34 @@ def complete_oauth_flow(auth_code: str, redirect_uri: str) -> None:
     logger.info("[GmailService] ✅ OAuth2 token saved successfully")
 
 
-def fetch_unread_emails(max_results: int = 20) -> List[Dict[str, Any]]:
+def fetch_unread_emails(max_results: int = 20, include_read: bool = True) -> List[Dict[str, Any]]:
     """
-    Fetch unread emails from Gmail inbox.
-    Returns a list of simplified email dicts (no raw PII bodies in summary).
+    Fetch emails from Gmail inbox.
+    By default fetches both read and unread (include_read=True) so the CRM
+    always has data to work with. Pass include_read=False for unread-only.
     """
     try:
         service = _build_service()
-        # Get list of unread message IDs
+
+        # Build label filter — include_read=True → just INBOX, False → INBOX + UNREAD
+        label_ids = ["INBOX"] if include_read else ["INBOX", "UNREAD"]
+
         result = service.users().messages().list(
             userId="me",
-            labelIds=["INBOX", "UNREAD"],
+            labelIds=label_ids,
             maxResults=max_results,
         ).execute()
 
         messages = result.get("messages", [])
+
+        # If inbox is totally empty (new account / test), also pull from SENT
+        if not messages:
+            logger.info("[GmailService] Inbox empty — trying SENT folder as fallback")
+            sent_result = service.users().messages().list(
+                userId="me", labelIds=["SENT"], maxResults=max_results
+            ).execute()
+            messages = sent_result.get("messages", [])
+
         emails: List[Dict[str, Any]] = []
 
         for msg_ref in messages:
@@ -178,22 +191,25 @@ def fetch_unread_emails(max_results: int = 20) -> List[Dict[str, Any]]:
 
                 headers = {h["name"]: h["value"] for h in msg.get("payload", {}).get("headers", [])}
                 body = _extract_body(msg.get("payload", {}))
+                label_ids_on_msg = msg.get("labelIds", [])
+                is_unread = "UNREAD" in label_ids_on_msg
 
                 emails.append({
-                    "gmail_id": msg_ref["id"],
+                    "gmail_id":  msg_ref["id"],
                     "thread_id": msg.get("threadId"),
-                    "from": headers.get("From", ""),
-                    "to": headers.get("To", ""),
-                    "subject": headers.get("Subject", "(no subject)"),
-                    "date": headers.get("Date", ""),
-                    "body": body[:2000],  # Truncate for safety
-                    "snippet": msg.get("snippet", ""),
-                    "labels": msg.get("labelIds", []),
+                    "from":      headers.get("From", ""),
+                    "to":        headers.get("To", ""),
+                    "subject":   headers.get("Subject", "(no subject)"),
+                    "date":      headers.get("Date", ""),
+                    "body":      body[:2000],
+                    "snippet":   msg.get("snippet", ""),
+                    "labels":    label_ids_on_msg,
+                    "is_unread": is_unread,
                 })
             except Exception as e:
                 logger.warning(f"[GmailService] Could not fetch message {msg_ref['id']}: {e}")
 
-        logger.info(f"[GmailService] Fetched {len(emails)} unread emails")
+        logger.info(f"[GmailService] Fetched {len(emails)} inbox emails (include_read={include_read})")
         return emails
 
     except Exception as e:
