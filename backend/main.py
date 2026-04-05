@@ -346,14 +346,6 @@ async def monitor_customer_sync(
     return result
 
 
-@app.post("/api/agents/schedule-meeting/sync")
-async def schedule_meeting_sync(
-    meeting_request: Dict[str, Any],
-    db: Session = Depends(get_db)
-):
-    """Run Meeting Scheduler Agent synchronously and return full result."""
-    result = await orchestrator.schedule_meeting(meeting_request, db)
-    return result
 
 
 @app.post("/api/agents/generate-analytics/sync")
