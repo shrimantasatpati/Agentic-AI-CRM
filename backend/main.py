@@ -520,6 +520,68 @@ async def sync_gmail_emails(limit: int = 20, db: Session = Depends(get_db)):
         raise HTTPException(status_code=503, detail=f"Gmail sync failed: {e}")
 
 
+@app.post("/api/emails/analyze-inbox")
+async def analyze_inbox_emails(limit: int = 10, db: Session = Depends(get_db)):
+    """
+    Downstream automation: read unanalyzed inbound emails from CRM DB,
+    run EmailIntelligenceAgent on each, store results back in the record.
+    Flow: Gmail Sync → DB → THIS endpoint → Agent LLM analysis → results in DB
+    """
+    from database.models import Email as EmailModel
+    from sqlalchemy import desc
+    try:
+        # Fetch unanalyzed inbound emails (no agent_result in metadata yet)
+        emails = (
+            db.query(EmailModel)
+            .filter(EmailModel.direction == "inbound")
+            .order_by(desc(EmailModel.created_at))
+            .limit(limit)
+            .all()
+        )
+        # Skip already-analyzed ones
+        unanalyzed = [
+            e for e in emails
+            if not (e.extra_metadata or {}).get("agent_analyzed")
+        ]
+        if not unanalyzed:
+            return {"status": "ok", "message": "No unanalyzed emails found", "analyzed": 0}
+
+        results = []
+        for email_record in unanalyzed:
+            try:
+                agent_result = await orchestrator.email_agent.execute({
+                    "action": "analyze",
+                    "from": email_record.from_email,
+                    "subject": email_record.subject,
+                    "body": email_record.body or email_record.snippet or "",
+                    "email_id": email_record.id,
+                })
+                # Store analysis result back on the record
+                metadata = dict(email_record.extra_metadata or {})
+                metadata["agent_analyzed"] = True
+                metadata["sentiment"] = agent_result.get("sentiment")
+                metadata["category"] = agent_result.get("category")
+                metadata["priority"] = agent_result.get("priority")
+                metadata["draft_response"] = agent_result.get("draft_response")
+                metadata["follow_up_suggestions"] = agent_result.get("follow_up_suggestions", [])
+                email_record.extra_metadata = metadata
+                db.add(email_record)
+                results.append({
+                    "email_id": email_record.id,
+                    "subject": email_record.subject,
+                    "sentiment": agent_result.get("sentiment"),
+                    "priority": agent_result.get("priority"),
+                    "category": agent_result.get("category"),
+                })
+            except Exception as e:
+                results.append({"email_id": email_record.id, "error": str(e)})
+
+        db.commit()
+        return {"status": "success", "analyzed": len(results), "results": results}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Inbox analysis failed: {e}")
+
+
 class SendReplyRequest(BaseModel):
     to_email: str
     subject: str

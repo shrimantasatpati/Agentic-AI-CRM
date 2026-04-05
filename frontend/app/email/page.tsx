@@ -143,9 +143,19 @@ function GmailConnectBanner() {
     setSyncing(true); setSyncMsg('');
     try {
       const res = await fetch('http://localhost:8000/api/emails/sync?limit=20');
-      const data = await res.json() as { fetched: number; saved_to_crm: number };
-      setSyncMsg(`✅ ${data.fetched} fetched, ${data.saved_to_crm} new saved`);
-    } catch { setSyncMsg('❌ Sync failed — check backend'); }
+      const data = await res.json() as { fetched?: number; saved_to_crm?: number; status?: string; detail?: string };
+      if (!res.ok) {
+        setSyncMsg(`❌ ${data.detail || 'Sync error — check backend'}`);
+      } else {
+        const fetched = data.fetched ?? 0;
+        const saved   = data.saved_to_crm ?? 0;
+        setSyncMsg(
+          fetched === 0
+            ? '📭 No unread emails in Gmail inbox right now'
+            : `✅ ${fetched} fetched, ${saved} new saved to CRM`
+        );
+      }
+    } catch { setSyncMsg('❌ Sync failed — backend unreachable'); }
     setSyncing(false);
   };
 

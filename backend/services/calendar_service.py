@@ -14,11 +14,25 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-_BASE_DIR = Path(__file__).resolve().parent.parent
-_CREDENTIALS_FILE = _BASE_DIR / os.getenv(
-    "GMAIL_API_CREDENTIALS",
-    "client_secret_643405311346-b56epskobkh3a7bavssp2gljg9sm42th.apps.googleusercontent.com.json"
-)
+_BASE_DIR = Path(__file__).resolve().parent.parent          # D:\AI_CRM\backend
+_PROJECT_ROOT = _BASE_DIR.parent                            # D:\AI_CRM
+
+def _resolve_credentials_path() -> Path:
+    """Resolve the credentials file path from env var or search known locations."""
+    env_val = os.getenv("GMAIL_API_CREDENTIALS", "").strip().strip('"').strip("'")
+    if env_val:
+        p = Path(env_val)
+        if p.is_absolute():
+            return p                        # Absolute path — use directly
+        if (_BASE_DIR / p).exists():
+            return _BASE_DIR / p
+        return _PROJECT_ROOT / p
+    default = "client_secret_643405311346-b56epskobkh3a7bavssp2gljg9sm42th.apps.googleusercontent.com.json"
+    if (_BASE_DIR / default).exists():
+        return _BASE_DIR / default
+    return _PROJECT_ROOT / default          # Where the user placed it
+
+_CREDENTIALS_FILE = _resolve_credentials_path()
 _TOKEN_FILE = _BASE_DIR / "credentials" / "gmail_token.json"  # shared token with Gmail
 
 # Scopes needed for Calendar (include Gmail scopes for shared token)

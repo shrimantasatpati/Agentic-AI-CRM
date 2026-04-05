@@ -190,24 +190,52 @@ export default function MeetingsPage() {
 
     const liveResult = await apiCallPromise;
     if (liveResult) {
+      // Normalize: agent may return attendees/tasks as strings or arrays
+      const normalizeToArray = (val: unknown, fallback: string[] = []): string[] => {
+        if (Array.isArray(val)) return val.map(String);
+        if (typeof val === 'string' && val.trim()) return val.split(',').map((s) => s.trim()).filter(Boolean);
+        return fallback;
+      };
+      const normalizeAgenda = (val: unknown): { item: string; duration_minutes: number }[] => {
+        if (!Array.isArray(val)) return MOCK_RESULT.agenda;
+        return val.map((a) => typeof a === 'string' ? { item: a, duration_minutes: 10 } : a as { item: string; duration_minutes: number });
+      };
+
+      // Normalize prep_materials: agent returns { prep_notes, success_criteria, recommended_collateral }
+      // but UI expects { talking_points, success_criteria, collateral }
+      const normalizePrepMaterials = (raw: unknown): MeetingSchedulerResult['prep_materials'] => {
+        if (!raw || typeof raw !== 'object') return MOCK_RESULT.prep_materials;
+        const r = raw as Record<string, unknown>;
+        // talking_points: from prep_notes (may be string or array)
+        const talkingPoints: string[] = Array.isArray(r.talking_points)
+          ? r.talking_points.map(String)
+          : Array.isArray(r.prep_notes)
+            ? r.prep_notes.map(String)
+            : typeof r.prep_notes === 'string' && r.prep_notes.trim()
+              ? r.prep_notes.split('\n').map((s: string) => s.replace(/^[-•*]\s*/, '').trim()).filter(Boolean)
+              : MOCK_RESULT.prep_materials.talking_points;
+        // success_criteria
+        const successCriteria: string[] = Array.isArray(r.success_criteria)
+          ? r.success_criteria.map(String)
+          : MOCK_RESULT.prep_materials.success_criteria;
+        // collateral: from collateral or recommended_collateral
+        const collateral: string[] = Array.isArray(r.collateral)
+          ? r.collateral.map(String)
+          : Array.isArray(r.recommended_collateral)
+            ? r.recommended_collateral.map(String)
+            : MOCK_RESULT.prep_materials.collateral;
+        return { talking_points: talkingPoints, success_criteria: successCriteria, collateral };
+      };
+
       // Map agent result to display format
       const display: MeetingSchedulerResult = {
         scheduled_time: liveResult.scheduled_time || liveResult.context?.scheduled_time || 'Time selected by AI agent',
         duration_minutes: parseInt(formData.duration || '30', 10),
         meeting_type: formData.meeting_type || liveResult.type || 'Meeting',
-        attendees: liveResult.attendees || formData.attendees?.split(',').map((s: string) => s.trim()) || [],
-        agenda: Array.isArray(liveResult.agenda)
-          ? liveResult.agenda.map((a: string | { item: string; duration_minutes: number }) =>
-              typeof a === 'string' ? { item: a, duration_minutes: 10 } : a
-            )
-          : MOCK_RESULT.agenda,
-        prep_materials: liveResult.prep_materials || {
-          ...MOCK_RESULT.prep_materials,
-          talking_points: Array.isArray(liveResult.prep_notes)
-            ? liveResult.prep_notes
-            : (liveResult.prep_notes ? [liveResult.prep_notes] : MOCK_RESULT.prep_materials.talking_points),
-        },
-        follow_up_tasks: liveResult.follow_up_tasks || MOCK_RESULT.follow_up_tasks,
+        attendees: normalizeToArray(liveResult.attendees, formData.attendees?.split(',').map((s: string) => s.trim()) || []),
+        agenda: normalizeAgenda(liveResult.agenda),
+        prep_materials: normalizePrepMaterials(liveResult.prep_materials),
+        follow_up_tasks: normalizeToArray(liveResult.follow_up_tasks, MOCK_RESULT.follow_up_tasks),
       };
       setResult(display);
       setCalBooked(liveResult.calendar_booked || null);
