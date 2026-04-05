@@ -261,6 +261,15 @@ class AgentOrchestrator:
             }
             email_result = await self.email_agent.execute(email_task)
             draft = email_result.get("draft_response", "")
+            # Guard: if draft is accidentally a JSON string, extract the "draft" key
+            if isinstance(draft, str) and draft.strip().startswith("{"):
+                try:
+                    import json, re
+                    json_match = re.search(r'\{.*\}', draft, re.DOTALL)
+                    parsed_draft = json.loads(json_match.group() if json_match else draft)
+                    draft = parsed_draft.get("draft", draft)
+                except Exception:
+                    pass  # keep draft as-is
             steps.append("✨ Agent 2: Personalized email draft created.")
 
             # Auto-send via Gmail if authenticated

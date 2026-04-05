@@ -59,11 +59,13 @@ export default function AgentPageLayout({
   const handleRun = async () => {
     setRunning(true);
     setTotalMs(null);
-    try {
-      await onRun(formData);
-    } catch {
-      // error handled by parent
-    }
+    // Fire API call in parallel — don't await it here.
+    // running stays true until the WorkflowSteps animation completes via onComplete.
+    onRun(formData).catch(() => {/* error handled by parent */});
+  };
+
+  const handleAnimationComplete = (ms: number) => {
+    setTotalMs(ms);
     setRunning(false);
   };
 
@@ -171,7 +173,7 @@ export default function AgentPageLayout({
               steps={steps}
               color={agentColor}
               running={running}
-              onComplete={setTotalMs}
+              onComplete={handleAnimationComplete}
             />
           </div>
         </div>
