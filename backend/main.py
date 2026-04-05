@@ -594,12 +594,21 @@ async def sync_gmail_emails(limit: int = 20, db: Session = Depends(get_db), back
         print(f"{'='*60}\n")
 
         # Auto-analyze newly saved emails via Email Intelligence Agent (background)
-        if newly_saved_ids and background_tasks:
+        # Also pick up any existing unanalyzed emails from previous syncs
+        unanalyzed_ids = [
+            e.id for e in db.query(EmailModel).filter(
+                EmailModel.direction == "inbound"
+            ).all()
+            if not (e.extra_metadata or {}).get("agent_analyzed")
+        ]
+        ids_to_analyze = list(dict.fromkeys(newly_saved_ids + unanalyzed_ids))[:20]  # deduplicate, cap at 20
+
+        if ids_to_analyze and background_tasks:
             async def _auto_analyze():
                 analyze_db = next(get_db())
                 try:
                     emails_to_analyze = analyze_db.query(EmailModel).filter(
-                        EmailModel.id.in_(newly_saved_ids)
+                        EmailModel.id.in_(ids_to_analyze)
                     ).all()
                     for email_record in emails_to_analyze:
                         try:
@@ -887,8 +896,14 @@ async def download_daily_report(db: Session = Depends(get_db)):
     writer.writerow(["Subject", "From", "Date", "Sentiment", "Category"])
     emails_today = db.query(EmailModel).filter(EmailModel.created_at >= since).all()
     for e in emails_today:
-        meta = (getattr(e, "extra_metadata", None) or {})
-        writer.writerow([e.subject or "", e.sender or "", str(e.received_at or ""), meta.get("sentiment", ""), meta.get("category", "")])
+        try:
+            meta = (getattr(e, "extra_metadata", None) or {})
+            sentiment = meta.get("sentiment", "")
+            if isinstance(sentiment, dict):
+                sentiment = sentiment.get("label", "")
+            writer.writerow([e.subject or "", e.from_email or "", str(e.received_at or e.created_at or ""), sentiment, meta.get("category", "")])
+        except Exception:
+            writer.writerow(["", "", "", "", ""])
     writer.writerow([f"Total: {len(emails_today)} emails"])
     output.seek(0)
     logger.info(f"[Report] Daily report: {len(leads_today)} leads, {len(emails_today)} emails")
@@ -929,15 +944,30 @@ async def download_weekly_report(db: Session = Depends(get_db)):
     writer.writerow(["Subject", "From", "Sentiment", "Category", "Date"])
     emails_week = db.query(EmailModel).filter(EmailModel.created_at >= since).all()
     for e in emails_week:
-        meta = (getattr(e, "extra_metadata", None) or {})
-        writer.writerow([e.subject or "", e.sender or "", meta.get("sentiment", ""), meta.get("category", ""), str(e.received_at or "")])
+        try:
+            meta = (getattr(e, "extra_metadata", None) or {})
+            sentiment = meta.get("sentiment", "")
+            if isinstance(sentiment, dict):
+                sentiment = sentiment.get("label", "")
+            writer.writerow([e.subject or "", e.from_email or "", sentiment, meta.get("category", ""), str(e.received_at or e.created_at or "")])
+        except Exception:
+            writer.writerow(["", "", "", "", ""])
     writer.writerow([f"Total: {len(emails_week)} emails"])
     writer.writerow([])
     writer.writerow(["=== CUSTOMER HEALTH ==="])
     writer.writerow(["Name", "Company", "Health Score", "Churn Risk", "Total Spend"])
     all_customers = db.query(Customer).all()
     for c in all_customers:
-        writer.writerow([c.name, c.company or "", c.health_score or "", c.churn_risk or "", c.total_spend or ""])
+        try:
+            writer.writerow([
+                getattr(c, "name", "") or getattr(c, "id", ""),
+                getattr(c, "company", "") or "",
+                c.health_score or "",
+                c.churn_risk or "",
+                getattr(c, "total_spend", "") or getattr(c, "mrr", "") or ""
+            ])
+        except Exception:
+            writer.writerow(["", "", "", "", ""])
     writer.writerow([f"At-risk: {sum(1 for c in all_customers if c.churn_risk in ['high','critical'])} of {len(all_customers)}"])
     output.seek(0)
     logger.info(f"[Report] Weekly report: {len(leads_week)} leads, {len(emails_week)} emails, {len(all_customers)} customers")

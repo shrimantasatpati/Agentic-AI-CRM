@@ -9,12 +9,12 @@ import type { EmailIntelligenceResult } from '@/types';
 const COLOR = '#5e5ce6';
 
 const STEPS = [
-  { name: 'Received email', output: 'Email metadata parsed, body extracted successfully' },
-  { name: 'Analyzing sentiment', output: 'Sentiment: Negative · Score: 2/10 · Emotion: Frustration' },
-  { name: 'Categorizing email type', output: 'Category: complaint · High-priority pattern matched' },
-  { name: 'Determining priority', output: 'Priority: HIGH · Requires immediate attention' },
-  { name: 'Drafting personalized response', output: 'Empathetic response drafted based on customer history' },
-  { name: 'Generating follow-up suggestions', output: '3 strategic follow-up actions generated' },
+  { name: 'Received email', output: 'Email subject, sender, body, and headers extracted by agent' },
+  { name: 'Analyzing sentiment', output: 'VADER scored tone · LLM classified emotion and urgency level' },
+  { name: 'Categorizing email type', output: 'Email type determined: complaint, inquiry, demo request, or other' },
+  { name: 'Determining priority', output: 'Priority assigned based on sentiment, category, and SLA rules' },
+  { name: 'Drafting personalized response', output: 'LLM drafted reply using sender history and email context from CRM' },
+  { name: 'Generating follow-up suggestions', output: 'Strategic follow-up actions generated for sales or support team' },
 ];
 
 const EXAMPLES = [
