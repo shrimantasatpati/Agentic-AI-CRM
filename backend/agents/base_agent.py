@@ -49,7 +49,7 @@ class BaseAgent(ABC):
             "type": event_type,
             "agent": self.name,
             "data": data,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.utcnow().isoformat() + "Z"
         }
 
         if self.redis is not None:
@@ -81,7 +81,7 @@ class BaseAgent(ABC):
             "agent": self.name,
             "type": activity_type,
             "details": details,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.utcnow().isoformat() + "Z"
         }
 
         if self.redis is not None:

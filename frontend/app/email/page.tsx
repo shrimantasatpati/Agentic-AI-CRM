@@ -76,7 +76,8 @@ Customer Success Team`,
 
 // ---- Gmail Connect Button ----
 function GmailConnectBanner() {
-  const [status, setStatus]     = useState<'loading' | 'connected' | 'disconnected'>('loading');
+  // Default to 'disconnected' so the Connect button shows immediately in all browsers
+  const [status, setStatus]     = useState<'connected' | 'disconnected'>('disconnected');
   const [syncing, setSyncing]   = useState(false);
   const [syncMsg, setSyncMsg]   = useState('');
   const pollRef                 = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -123,7 +124,6 @@ function GmailConnectBanner() {
     setSyncing(false);
   };
 
-  if (status === 'loading') return null;
 
   if (status === 'connected') {
     return (
@@ -175,15 +175,24 @@ export default function EmailPage() {
   const handleRun = useCallback(async (formData: Record<string, string>) => {
     setError(null);
     setIsComplete(false);
-    try {
-      await fetch('http://localhost:8000/api/agents/analyze-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email_data: formData }),
-      }).catch(() => null);
-    } catch { /* ignore */ }
-    await new Promise((r) => setTimeout(r, STEPS.length * 500 + 600));
-    setResult(MOCK_RESULT);
+    setResult(null);
+
+    // Run animation and real API call in parallel
+    const apiCallPromise = fetch('http://localhost:8000/api/agents/analyze-email/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email_data: formData }),
+    }).then(async (res) => {
+      if (!res.ok) return null;
+      return res.json() as Promise<EmailIntelligenceResult>;
+    }).catch(() => null);
+
+    // Wait for animation to complete (steps × delay + gaps)
+    await new Promise((r) => setTimeout(r, STEPS.length * 600 + 400));
+
+    // Use real result if available, else graceful fallback
+    const liveResult = await apiCallPromise;
+    setResult(liveResult ?? MOCK_RESULT);
     setIsComplete(true);
   }, []);
 

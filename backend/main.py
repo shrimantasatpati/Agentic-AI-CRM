@@ -130,6 +130,20 @@ async def analyze_email(
     return {"status": "processing", "message": "Email analysis started"}
 
 
+@app.post("/api/agents/analyze-email/sync")
+async def analyze_email_sync(
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db)
+):
+    """Trigger Email Intelligence Agent synchronously and return full LLM result"""
+    try:
+        email_data = payload.get("email_data", payload)
+        result = await orchestrator.process_email(email_data, db)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/agents/analyze-deal/{deal_id}")
 async def analyze_deal(
     deal_id: str,

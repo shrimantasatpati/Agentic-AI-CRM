@@ -103,11 +103,23 @@ export default function MissionControlPage() {
         }>;
         const mapped: AgentEvent[] = raw.map((r) => {
           const disp = AGENT_DISPLAY[r.agent] || { label: r.agent, emoji: '🤖', color: '#8e8e93' };
+          // Build human-readable description from type + details
+          const detailStr = Object.entries(r.details || {})
+            .filter(([k]) => !['id', 'agent'].includes(k))
+            .map(([k, v]) => {
+              const label = k.replace(/_/g, ' ');
+              if (k === 'processing_time_ms') return `${v}ms`;
+              if (k === 'status') return String(v);
+              if (typeof v === 'number') return `${label}: ${v}`;
+              return `${label}: ${String(v).slice(0, 40)}`;
+            })
+            .join(' · ');
+          const eventLabel = r.type.replace(/_/g, ' ');
           return {
             id: r.id,
             agent: disp.label,
             agentColor: disp.color,
-            description: `${r.type}: ${JSON.stringify(r.details).slice(0, 80)}`,
+            description: detailStr ? `${eventLabel} — ${detailStr}` : eventLabel,
             type: eventType(r.type),
             timestamp: r.timestamp,
           };
@@ -176,6 +188,11 @@ export default function MissionControlPage() {
               color="#0066cc"
               subtitle={`${stats.leads.qualified} qualified`}
               trend={{ value: 12, direction: 'up' }}
+              hoverDetails={[
+                { label: 'Total leads',  value: stats.leads.total.toLocaleString() },
+                { label: 'Qualified',    value: stats.leads.qualified.toLocaleString() },
+                { label: 'Unqualified', value: (stats.leads.total - stats.leads.qualified).toLocaleString() },
+              ]}
             />
             <StatCard
               label="Pipeline Value"
@@ -184,6 +201,11 @@ export default function MissionControlPage() {
               color="#34c759"
               subtitle={`${stats.deals.total} active deals`}
               trend={{ value: 8, direction: 'up' }}
+              hoverDetails={[
+                { label: 'Total deals',    value: stats.deals.total.toLocaleString() },
+                { label: 'Pipeline value', value: fmtMoney(stats.deals.pipeline_value) },
+                { label: 'Avg deal size',  value: stats.deals.total > 0 ? fmtMoney(Math.round(stats.deals.pipeline_value / stats.deals.total)) : '—' },
+              ]}
             />
             <StatCard
               label="Active Customers"
@@ -191,6 +213,10 @@ export default function MissionControlPage() {
               icon={<Heart size={20} />}
               color="#ff9500"
               trend={{ value: 3, direction: 'up' }}
+              hoverDetails={[
+                { label: 'Active customers', value: stats.customers.total.toLocaleString() },
+                { label: 'Avg MRR/customer', value: stats.customers.total > 0 ? fmtMoney(Math.round(stats.customers.mrr / stats.customers.total)) : '—' },
+              ]}
             />
             <StatCard
               label="MRR"
@@ -199,6 +225,11 @@ export default function MissionControlPage() {
               color="#bf5af2"
               subtitle={`ARR: ${fmtMoney(stats.customers.arr)}`}
               trend={{ value: 5, direction: 'up' }}
+              hoverDetails={[
+                { label: 'MRR',   value: fmtMoney(stats.customers.mrr) },
+                { label: 'ARR',   value: fmtMoney(stats.customers.arr) },
+                { label: 'Avg MRR per customer', value: stats.customers.total > 0 ? fmtMoney(Math.round(stats.customers.mrr / stats.customers.total)) : '—' },
+              ]}
             />
           </>
         ) : null}

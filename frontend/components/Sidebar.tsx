@@ -29,7 +29,7 @@ const navItems: NavItem[] = [
 ];
 
 const MODEL_OPTIONS = [
-  { label: 'Gemini Flash Lite',  value: 'gemini-2.5-flash-lite-preview-06-17', provider: 'gemini' },
+  { label: 'Gemini 2.5 Flash',  value: 'gemini-2.5-flash', provider: 'gemini' },
   { label: 'Llama 3.1 8B',       value: 'llama-3.1-8b-instant',               provider: 'groq'   },
 ];
 
