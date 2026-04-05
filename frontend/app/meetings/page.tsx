@@ -175,7 +175,9 @@ export default function MeetingsPage() {
     setCalBooked(null);
     setResult(null);
 
-    // Run animation and real API call in parallel
+    // Fire API call — WorkflowSteps animation runs concurrently and is self-timed.
+    // Minimum wait = max possible animation time (7 steps × 920ms max) so the cleanup
+    // in WorkflowSteps never fires before all steps visually complete.
     const apiCallPromise = fetch('http://localhost:8000/api/agents/schedule-meeting/sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -185,64 +187,76 @@ export default function MeetingsPage() {
       return res.json();
     }).catch(() => null);
 
-    // Wait for animation
-    await new Promise((r) => setTimeout(r, STEPS.length * 500 + 600));
+    const MIN_ANIM_MS = STEPS.length * 650; // 7 × 650 ≈ 4.5s — covers max step timing
+    const [liveResult] = await Promise.all([
+      apiCallPromise,
+      new Promise((r) => setTimeout(r, MIN_ANIM_MS)),
+    ]);
 
-    const liveResult = await apiCallPromise;
-    if (liveResult) {
-      // Normalize: agent may return attendees/tasks as strings or arrays
-      const normalizeToArray = (val: unknown, fallback: string[] = []): string[] => {
-        if (Array.isArray(val)) return val.map(String);
-        if (typeof val === 'string' && val.trim()) return val.split(',').map((s) => s.trim()).filter(Boolean);
-        return fallback;
-      };
-      const normalizeAgenda = (val: unknown): { item: string; duration_minutes: number }[] => {
-        if (!Array.isArray(val)) return MOCK_RESULT.agenda;
-        return val.map((a) => typeof a === 'string' ? { item: a, duration_minutes: 10 } : a as { item: string; duration_minutes: number });
-      };
+    try {
+      if (liveResult) {
+        // Normalize: agent may return attendees/tasks as strings or arrays
+        const normalizeToArray = (val: unknown, fallback: string[] = []): string[] => {
+          if (Array.isArray(val)) return val.map(String);
+          if (typeof val === 'string' && val.trim()) return val.split(',').map((s) => s.trim()).filter(Boolean);
+          return fallback;
+        };
+        const normalizeAgenda = (val: unknown): { item: string; duration_minutes: number }[] => {
+          if (!Array.isArray(val)) return MOCK_RESULT.agenda;
+          return val.map((a) => typeof a === 'string' ? { item: a, duration_minutes: 10 } : a as { item: string; duration_minutes: number });
+        };
 
-      // Normalize prep_materials: agent returns { prep_notes, success_criteria, recommended_collateral }
-      // but UI expects { talking_points, success_criteria, collateral }
-      const normalizePrepMaterials = (raw: unknown): MeetingSchedulerResult['prep_materials'] => {
-        if (!raw || typeof raw !== 'object') return MOCK_RESULT.prep_materials;
-        const r = raw as Record<string, unknown>;
-        // talking_points: from prep_notes (may be string or array)
-        const talkingPoints: string[] = Array.isArray(r.talking_points)
-          ? r.talking_points.map(String)
-          : Array.isArray(r.prep_notes)
-            ? r.prep_notes.map(String)
-            : typeof r.prep_notes === 'string' && r.prep_notes.trim()
-              ? r.prep_notes.split('\n').map((s: string) => s.replace(/^[-•*]\s*/, '').trim()).filter(Boolean)
-              : MOCK_RESULT.prep_materials.talking_points;
-        // success_criteria
-        const successCriteria: string[] = Array.isArray(r.success_criteria)
-          ? r.success_criteria.map(String)
-          : MOCK_RESULT.prep_materials.success_criteria;
-        // collateral: from collateral or recommended_collateral
-        const collateral: string[] = Array.isArray(r.collateral)
-          ? r.collateral.map(String)
-          : Array.isArray(r.recommended_collateral)
-            ? r.recommended_collateral.map(String)
-            : MOCK_RESULT.prep_materials.collateral;
-        return { talking_points: talkingPoints, success_criteria: successCriteria, collateral };
-      };
+        // Normalize prep_materials: agent returns { prep_notes, success_criteria, recommended_collateral }
+        // but UI expects { talking_points, success_criteria, collateral }
+        const normalizePrepMaterials = (raw: unknown): MeetingSchedulerResult['prep_materials'] => {
+          if (!raw || typeof raw !== 'object') return MOCK_RESULT.prep_materials;
+          const r = raw as Record<string, unknown>;
+          // talking_points: from prep_notes (may be string or array)
+          const talkingPoints: string[] = Array.isArray(r.talking_points)
+            ? r.talking_points.map(String)
+            : Array.isArray(r.prep_notes)
+              ? r.prep_notes.map(String)
+              : typeof r.prep_notes === 'string' && r.prep_notes.trim()
+                ? r.prep_notes.split('\n').map((s: string) => s.replace(/^[-•*]\s*/, '').trim()).filter(Boolean)
+                : MOCK_RESULT.prep_materials.talking_points;
+          // success_criteria
+          const successCriteria: string[] = Array.isArray(r.success_criteria)
+            ? r.success_criteria.map(String)
+            : MOCK_RESULT.prep_materials.success_criteria;
+          // collateral: from collateral or recommended_collateral
+          const collateral: string[] = Array.isArray(r.collateral)
+            ? r.collateral.map(String)
+            : Array.isArray(r.recommended_collateral)
+              ? r.recommended_collateral.map(String)
+              : MOCK_RESULT.prep_materials.collateral;
+          return { talking_points: talkingPoints, success_criteria: successCriteria, collateral };
+        };
 
-      // Map agent result to display format
-      const display: MeetingSchedulerResult = {
-        scheduled_time: liveResult.scheduled_time || liveResult.context?.scheduled_time || 'Time selected by AI agent',
-        duration_minutes: parseInt(formData.duration || '30', 10),
-        meeting_type: formData.meeting_type || liveResult.type || 'Meeting',
-        attendees: normalizeToArray(liveResult.attendees, formData.attendees?.split(',').map((s: string) => s.trim()) || []),
-        agenda: normalizeAgenda(liveResult.agenda),
-        prep_materials: normalizePrepMaterials(liveResult.prep_materials),
-        follow_up_tasks: normalizeToArray(liveResult.follow_up_tasks, MOCK_RESULT.follow_up_tasks),
-      };
-      setResult(display);
-      setCalBooked(liveResult.calendar_booked || null);
-    } else {
+        // Map agent result to display format
+        const display: MeetingSchedulerResult = {
+          scheduled_time: liveResult.scheduled_time || liveResult.context?.scheduled_time || 'Time selected by AI agent',
+          duration_minutes: parseInt(formData.duration || '30', 10),
+          meeting_type: formData.meeting_type || liveResult.type || 'Meeting',
+          attendees: normalizeToArray(liveResult.attendees, formData.attendees?.split(',').map((s: string) => s.trim()) || []),
+          agenda: normalizeAgenda(liveResult.agenda),
+          prep_materials: normalizePrepMaterials(liveResult.prep_materials),
+          follow_up_tasks: normalizeToArray(liveResult.follow_up_tasks, MOCK_RESULT.follow_up_tasks),
+        };
+        setResult(display);
+        setCalBooked(liveResult.calendar_booked || null);
+      } else {
+        // API failed — show mock result so user sees the UI
+        setResult({ ...MOCK_RESULT, meeting_type: formData.meeting_type || MOCK_RESULT.meeting_type });
+        setError('Agent did not return a result — showing preview data');
+      }
+    } catch (normErr) {
+      console.error('[MeetingsPage] Normalization error:', normErr);
       setResult({ ...MOCK_RESULT, meeting_type: formData.meeting_type || MOCK_RESULT.meeting_type });
+      setError(`Result processing error: ${normErr}`);
+    } finally {
+      setIsComplete(true);
     }
-    setIsComplete(true);
+
   }, []);
 
   const toggleItem = (i: number) => {

@@ -486,11 +486,41 @@ async def gmail_auth_callback(code: str, state: str = ""):
 
 @app.get("/api/auth/gmail/status")
 async def gmail_auth_status():
-    """Check if Gmail OAuth token is present and valid."""
-    from services.gmail_service import is_authenticated
-    authed = is_authenticated()
-    return {"authenticated": authed,
-            "message": "Gmail connected" if authed else "Not connected — GET /api/auth/gmail to authorize"}
+    """Check Gmail + Calendar OAuth status and report token scopes."""
+    from services.gmail_service import is_authenticated as gmail_auth
+    from services.calendar_service import is_authenticated as cal_auth
+    from pathlib import Path
+    import json
+
+    token_path = Path("credentials/gmail_token.json")
+    token_exists = token_path.exists()
+    token_scopes: list = []
+
+    if token_exists:
+        try:
+            with open(token_path) as f:
+                tok = json.load(f)
+            token_scopes = tok.get("scopes", [])
+        except Exception:
+            pass
+
+    gmail_ok = gmail_auth()
+    cal_ok    = cal_auth()
+
+    has_cal_scope = any("calendar" in s for s in token_scopes)
+
+    return {
+        "authenticated":    gmail_ok,
+        "calendar_ok":      cal_ok,
+        "token_exists":     token_exists,
+        "token_scopes":     token_scopes,
+        "has_calendar_scope": has_cal_scope,
+        "message": (
+            "✅ Gmail + Calendar both connected"          if gmail_ok and cal_ok else
+            "⚠️ Gmail OK but Calendar scope missing — re-authorize" if gmail_ok and not cal_ok else
+            "❌ Not connected — click Connect Gmail"
+        )
+    }
 
 
 @app.get("/api/emails/sync")
