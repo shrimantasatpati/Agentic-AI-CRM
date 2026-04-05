@@ -36,6 +36,9 @@ interface AgentPageLayoutProps {
   // Steps
   steps: StepDef[];
 
+  // Optional extra content rendered below the description (e.g. OAuth banners)
+  headerExtra?: React.ReactNode;
+
   // API call + result renderer
   onRun: (formData: Record<string, string>) => Promise<void>;
   resultNode: React.ReactNode;
@@ -47,7 +50,7 @@ interface AgentPageLayoutProps {
 export default function AgentPageLayout({
   agentName, agentDescription, agentColor, agentEmoji,
   formFields, defaultValues, examples, steps,
-  onRun, resultNode, isComplete, error, onRetry,
+  onRun, resultNode, isComplete, error, onRetry, headerExtra,
 }: AgentPageLayoutProps) {
   const [formData, setFormData] = useState<Record<string, string>>(defaultValues);
   const [running, setRunning]   = useState(false);
@@ -79,6 +82,9 @@ export default function AgentPageLayout({
         </div>
         <p className="section-subtitle">{agentDescription}</p>
       </div>
+
+      {/* Optional header slot — e.g. OAuth connect banners */}
+      {headerExtra}
 
       <div className="flex gap-4 items-start">
         {/* PANEL 1 — Input Form */}

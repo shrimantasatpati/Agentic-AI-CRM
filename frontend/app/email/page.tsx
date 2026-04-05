@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useCallback } from 'react';
-import { Copy, Check, AlertTriangle } from 'lucide-react';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { Copy, Check, AlertTriangle, Mail, RefreshCw, CheckCircle, Loader } from 'lucide-react';
 import AgentPageLayout from '@/components/AgentPageLayout';
 import type { EmailIntelligenceResult } from '@/types';
+
 
 const COLOR = '#5e5ce6';
 
@@ -73,11 +74,103 @@ Customer Success Team`,
   requires_human_review: true,
 };
 
+// ---- Gmail Connect Button ----
+function GmailConnectBanner() {
+  const [status, setStatus]     = useState<'loading' | 'connected' | 'disconnected'>('loading');
+  const [syncing, setSyncing]   = useState(false);
+  const [syncMsg, setSyncMsg]   = useState('');
+  const pollRef                 = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const checkStatus = useCallback(async () => {
+    try {
+      const res = await fetch('http://localhost:8000/api/auth/gmail/status');
+      if (res.ok) {
+        const data = await res.json() as { authenticated: boolean };
+        setStatus(data.authenticated ? 'connected' : 'disconnected');
+        if (data.authenticated && pollRef.current) {
+          clearInterval(pollRef.current);
+          pollRef.current = null;
+        }
+      }
+    } catch { setStatus('disconnected'); }
+  }, []);
+
+  useEffect(() => {
+    checkStatus();
+    // Poll every 3s in case user just completed OAuth in another tab
+    pollRef.current = setInterval(checkStatus, 3000);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [checkStatus]);
+
+  const handleConnect = async () => {
+    try {
+      const res = await fetch('http://localhost:8000/api/auth/gmail');
+      const data = await res.json() as { auth_url: string };
+      window.open(data.auth_url, '_blank', 'width=500,height=650');
+      // Start polling every 2s to detect when auth completes
+      if (pollRef.current) clearInterval(pollRef.current);
+      pollRef.current = setInterval(checkStatus, 2000);
+    } catch { /* backend offline */ }
+  };
+
+  const handleSync = async () => {
+    setSyncing(true); setSyncMsg('');
+    try {
+      const res = await fetch('http://localhost:8000/api/emails/sync?limit=20');
+      const data = await res.json() as { fetched: number; saved_to_crm: number };
+      setSyncMsg(`✅ ${data.fetched} fetched, ${data.saved_to_crm} new saved to CRM`);
+    } catch { setSyncMsg('❌ Sync failed — check backend'); }
+    setSyncing(false);
+  };
+
+  if (status === 'loading') return null;
+
+  if (status === 'connected') {
+    return (
+      <div className="flex items-center gap-3 p-3 rounded-xl mb-4"
+        style={{ background: 'rgba(52,199,89,0.08)', border: '1px solid rgba(52,199,89,0.25)' }}>
+        <CheckCircle size={16} color="#34c759" />
+        <span className="text-sm font-semibold" style={{ color: '#34c759' }}>Gmail Connected</span>
+        <button
+          onClick={handleSync}
+          disabled={syncing}
+          className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold"
+          style={{ background: '#34c759', color: '#fff', cursor: syncing ? 'not-allowed' : 'pointer', opacity: syncing ? 0.6 : 1 }}
+        >
+          {syncing ? <Loader size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+          {syncing ? 'Syncing…' : 'Sync Gmail'}
+        </button>
+        {syncMsg && <span className="text-xs ml-2" style={{ color: 'var(--text-secondary)' }}>{syncMsg}</span>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-3 p-3 rounded-xl mb-4"
+      style={{ background: 'rgba(94,92,230,0.08)', border: '1px solid rgba(94,92,230,0.3)' }}>
+      <Mail size={16} color="#5e5ce6" />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Connect Gmail to sync real emails</p>
+        <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>One-time OAuth setup — opens in a new window</p>
+      </div>
+      <button
+        onClick={handleConnect}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold flex-shrink-0"
+        style={{ background: '#5e5ce6', color: '#fff', cursor: 'pointer' }}
+      >
+        <Mail size={12} />
+        Connect Gmail
+      </button>
+    </div>
+  );
+}
+
 export default function EmailPage() {
   const [result, setResult]         = useState<EmailIntelligenceResult | null>(null);
   const [isComplete, setIsComplete] = useState(false);
   const [error, setError]           = useState<string | null>(null);
   const [copied, setCopied]         = useState(false);
+
 
   const handleRun = useCallback(async (formData: Record<string, string>) => {
     setError(null);
@@ -123,7 +216,9 @@ export default function EmailPage() {
       onRun={handleRun}
       error={error}
       isComplete={isComplete}
+      headerExtra={<GmailConnectBanner />}
       resultNode={result && (
+
         <div className="space-y-4">
           {/* Requires Review Banner */}
           {result.requires_human_review && (

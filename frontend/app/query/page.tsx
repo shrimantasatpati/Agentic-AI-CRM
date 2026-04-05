@@ -20,53 +20,100 @@ const QUERY_STEPS = [
 
 function makeId() { return Math.random().toString(36).slice(2); }
 
+// ---- UUID / ID column detector ----
+function isIdOrUUIDColumn(key: string, sampleValue: unknown): boolean {
+  const k = key.toLowerCase();
+  if (k === 'id' || k.endsWith('_id') || k === 'uuid') return true;
+  if (typeof sampleValue === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sampleValue)) return true;
+  return false;
+}
+
+// ---- Pick the best label (X-axis) column — skipping UUIDs and raw IDs ----
+function pickLabelKey(data: Record<string, unknown>[]): string {
+  if (!data || data.length === 0) return '';
+  const keys = Object.keys(data[0]);
+  // Prefer a non-ID string column
+  const stringCols = keys.filter(
+    (k) => typeof data[0][k] === 'string' && !isIdOrUUIDColumn(k, data[0][k])
+  );
+  if (stringCols.length > 0) return stringCols[0];
+  // Fall back to any non-ID non-numeric column
+  const nonId = keys.filter((k) => !isIdOrUUIDColumn(k, data[0][k]));
+  if (nonId.length > 0) return nonId[0];
+  return keys[0]; // Last resort
+}
+
+// ---- Pick numeric value columns — skip IDs ----
+function pickValueKeys(data: Record<string, unknown>[], labelKey: string): string[] {
+  if (!data || data.length === 0) return [];
+  return Object.keys(data[0]).filter(
+    (k) => k !== labelKey && typeof data[0][k] === 'number' && !isIdOrUUIDColumn(k, data[0][k])
+  );
+}
+
 // ---- Detect chart type from data shape ----
 type ChartType = 'bar' | 'line' | 'pie' | 'table';
 
 function detectChartType(data: Record<string, unknown>[]): ChartType {
   if (!data || data.length === 0) return 'table';
-  const keys = Object.keys(data[0]);
-  const numericKeys = keys.filter((k) => typeof data[0][k] === 'number');
+  const labelKey = pickLabelKey(data);
+  const valueKeys = pickValueKeys(data, labelKey);
+  if (valueKeys.length === 0) return 'table';
   if (data.length === 1) return 'table';
-  // Single numeric column → pie
-  if (numericKeys.length === 1 && keys.length === 2) return 'pie';
+  // Single numeric column with ≤6 labels → pie
+  if (valueKeys.length === 1 && data.length <= 6) return 'pie';
   // Time-based → line
-  if (keys.some((k) => k.includes('date') || k.includes('time') || k.includes('month'))) return 'line';
+  const keys = Object.keys(data[0]);
+  if (keys.some((k) => /date|time|month|year|day/i.test(k))) return 'line';
   return 'bar';
 }
 
+
 const CHART_COLORS = ['#0066cc', '#5e5ce6', '#34c759', '#ff9500', '#bf5af2', '#ff3b30', '#30b0c7'];
 
-// ---- Chart component ----
+// ---- Chart component — uses smart label/value detection ----
 function SmartChart({ data, type }: { data: Record<string, unknown>[]; type: ChartType }) {
   if (!data || data.length === 0) return null;
-  const keys      = Object.keys(data[0]);
-  const labelKey  = keys[0] as string;
-  const valueKeys = keys.slice(1).filter((k) => typeof data[0][k] === 'number');
+  const labelKey  = pickLabelKey(data);
+  const valueKeys = pickValueKeys(data, labelKey);
+  if (!labelKey || valueKeys.length === 0) return null;
 
-  if (type === 'pie' && valueKeys.length >= 1) {
+  // Truncate long labels for X-axis readability
+  const displayData = data.map((row) => ({
+    ...row,
+    [labelKey]: typeof row[labelKey] === 'string'
+      ? (row[labelKey] as string).length > 20
+        ? (row[labelKey] as string).slice(0, 18) + '…'
+        : row[labelKey]
+      : row[labelKey],
+  }));
+
+  if (type === 'pie') {
     const pieData = data.map((row) => ({
       name:  String(row[labelKey]),
       value: Number(row[valueKeys[0]]),
     }));
     return (
-      <ResponsiveContainer width="100%" height={220}>
+      <ResponsiveContainer width="100%" height={240}>
         <PieChart>
-          <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({ name, percent }) => `${String(name)} ${((percent ?? 0) * 100).toFixed(0)}%`}>
+          <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90}
+            label={({ name, percent }) => `${String(name).slice(0, 14)} ${((percent ?? 0) * 100).toFixed(0)}%`}
+          >
             {pieData.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
           </Pie>
           <Tooltip formatter={(v) => String(Number(v).toLocaleString())} />
+          <Legend wrapperStyle={{ fontSize: 11 }} />
         </PieChart>
       </ResponsiveContainer>
     );
   }
 
-  if (type === 'line' && valueKeys.length >= 1) {
+  if (type === 'line') {
     return (
       <ResponsiveContainer width="100%" height={220}>
-        <LineChart data={data} margin={{ left: 0, right: 8, top: 4, bottom: 0 }}>
-          <XAxis dataKey={labelKey} tick={{ fontSize: 11, fill: 'var(--text-tertiary)' }} axisLine={false} tickLine={false} />
-          <YAxis tick={{ fontSize: 11, fill: 'var(--text-tertiary)' }} axisLine={false} tickLine={false} />
+        <LineChart data={displayData} margin={{ left: 0, right: 8, top: 4, bottom: 0 }}>
+          <XAxis dataKey={labelKey} tick={{ fontSize: 10, fill: 'var(--text-tertiary)' }} axisLine={false} tickLine={false} />
+          <YAxis tick={{ fontSize: 10, fill: 'var(--text-tertiary)' }} axisLine={false} tickLine={false} />
           <Tooltip contentStyle={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)', borderRadius: 8, fontSize: 12 }} />
           {valueKeys.map((k, i) => (
             <Line key={k} type="monotone" dataKey={k} stroke={CHART_COLORS[i % CHART_COLORS.length]} strokeWidth={2} dot={false} />
@@ -80,9 +127,9 @@ function SmartChart({ data, type }: { data: Record<string, unknown>[]; type: Cha
   // Default: bar
   return (
     <ResponsiveContainer width="100%" height={220}>
-      <BarChart data={data} margin={{ left: 0, right: 8, top: 4, bottom: 0 }}>
-        <XAxis dataKey={labelKey} tick={{ fontSize: 11, fill: 'var(--text-tertiary)' }} axisLine={false} tickLine={false} />
-        <YAxis tick={{ fontSize: 11, fill: 'var(--text-tertiary)' }} axisLine={false} tickLine={false} />
+      <BarChart data={displayData} margin={{ left: 0, right: 8, top: 4, bottom: 0 }}>
+        <XAxis dataKey={labelKey} tick={{ fontSize: 10, fill: 'var(--text-tertiary)' }} axisLine={false} tickLine={false} />
+        <YAxis tick={{ fontSize: 10, fill: 'var(--text-tertiary)' }} axisLine={false} tickLine={false} />
         <Tooltip contentStyle={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)', borderRadius: 8, fontSize: 12 }} />
         {valueKeys.map((k, i) => (
           <Bar key={k} dataKey={k} fill={CHART_COLORS[i % CHART_COLORS.length]} radius={[4, 4, 0, 0]} />
@@ -239,67 +286,47 @@ function AgentStepsPanel({
   );
 }
 
-// ---- Inline result card shown inside the chat bubble ----
-function InlineResultCard({
-  data,
-  chartType,
-  onChartTypeChange,
-  showChart,
-  onShowChartChange,
-}: {
-  data: Record<string, unknown>[];
-  chartType: ChartType;
-  onChartTypeChange: (t: ChartType) => void;
-  showChart: boolean;
-  onShowChartChange: (v: boolean) => void;
-}) {
+// ---- Inline result card — auto chart, no 4-button toggle ----
+function InlineResultCard({ data }: { data: Record<string, unknown>[] }) {
+  const [showTable, setShowTable] = useState(false);
   if (!data || data.length === 0) return null;
+
+  const chartType   = detectChartType(data);
+  const valueKeys   = pickValueKeys(data, pickLabelKey(data));
+  const canChart    = chartType !== 'table' && valueKeys.length > 0;
+
   return (
     <div className="apple-card mt-3" style={{ padding: '14px 16px' }}>
-      {/* Chart type toggles */}
-      <div className="flex items-center gap-2 mb-3 flex-wrap">
+      {/* Header row — chart type label + optional table toggle */}
+      <div className="flex items-center gap-2 mb-3">
         <p className="text-xs font-semibold uppercase" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>
-          Visualization
+          {canChart ? chartType.toUpperCase() + ' Chart' : 'Table'}
         </p>
-        <div className="flex gap-1 ml-auto flex-wrap">
-          {(['bar', 'line', 'pie'] as ChartType[]).map((t) => (
-            <button
-              key={t}
-              onClick={() => { onChartTypeChange(t); onShowChartChange(true); }}
-              className="px-2 py-1 rounded-md text-xs font-semibold"
-              style={{
-                background: showChart && chartType === t ? '#ff3b30' : 'var(--bg-input)',
-                color: showChart && chartType === t ? '#fff' : 'var(--text-secondary)',
-              }}
-            >
-              {t}
-            </button>
-          ))}
+        {canChart && (
           <button
-            onClick={() => onShowChartChange(false)}
-            className="px-2 py-1 rounded-md text-xs font-semibold"
+            onClick={() => setShowTable((v) => !v)}
+            className="ml-auto px-2 py-1 rounded-md text-xs font-semibold"
             style={{
-              background: !showChart ? '#ff3b30' : 'var(--bg-input)',
-              color: !showChart ? '#fff' : 'var(--text-secondary)',
+              background: showTable ? '#ff3b30' : 'var(--bg-input)',
+              color: showTable ? '#fff' : 'var(--text-secondary)',
             }}
           >
-            table
+            {showTable ? 'Show chart' : 'Show table'}
           </button>
-        </div>
+        )}
       </div>
 
-      {showChart ? (
+      {/* Main visualization */}
+      {!showTable && canChart ? (
         <SmartChart data={data} type={chartType} />
       ) : (
         <ResultTable data={data} />
       )}
 
-      {/* Always show table below chart */}
-      {showChart && (
+      {/* Always show raw table below chart */}
+      {canChart && !showTable && (
         <div className="mt-3 pt-3" style={{ borderTop: '1px solid var(--border-secondary)' }}>
-          <p className="text-xs font-semibold uppercase mb-2" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>
-            Raw Data
-          </p>
+          <p className="text-xs font-semibold uppercase mb-2" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Raw Data</p>
           <ResultTable data={data} />
         </div>
       )}
@@ -508,10 +535,6 @@ export default function QueryPage() {
                       {msg.data && (msg.data as Record<string, unknown>[]).length > 0 && (
                         <InlineResultCard
                           data={msg.data as Record<string, unknown>[]}
-                          chartType={chartTypes[msg.id] || 'bar'}
-                          onChartTypeChange={(t) => setChartTypes((prev) => ({ ...prev, [msg.id]: t }))}
-                          showChart={showCharts[msg.id] !== false}
-                          onShowChartChange={(v) => setShowCharts((prev) => ({ ...prev, [msg.id]: v }))}
                         />
                       )}
                     </div>
