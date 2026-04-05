@@ -14,41 +14,42 @@ import ErrorBanner from '@/components/ErrorBanner';
 import { getDashboard, getPipeline } from '@/lib/api';
 import type { DashboardStats, PipelineData, AgentEvent, AgentStatus } from '@/types';
 
-// ---- Agent definitions ----
-const AGENTS: AgentStatus[] = [
-  { name: 'Lead Qualification', id: 'lead', color: '#0066cc', emoji: '🎯', route: '/leads',     status: 'active',  runsToday: 12, lastRun: '2 min ago' },
-  { name: 'Email Intelligence', id: 'email', color: '#5e5ce6', emoji: '📧', route: '/email',     status: 'active',  runsToday: 8,  lastRun: '5 min ago' },
-  { name: 'Sales Pipeline',     id: 'sales', color: '#34c759', emoji: '💰', route: '/pipeline',  status: 'standby', runsToday: 3,  lastRun: '1 hr ago'  },
-  { name: 'Customer Success',   id: 'cs',    color: '#ff9500', emoji: '🎉', route: '/customers', status: 'active',  runsToday: 15, lastRun: '30 sec ago'},
-  { name: 'Meeting Scheduler',  id: 'meet',  color: '#bf5af2', emoji: '📅', route: '/meetings',  status: 'standby', runsToday: 2,  lastRun: '3 hr ago'  },
-  { name: 'Analytics',          id: 'ana',   color: '#30b0c7', emoji: '📊', route: '/analytics', status: 'active',  runsToday: 6,  lastRun: '10 min ago'},
-];
+// ---- Helpers ----
+function makeId() { return Math.random().toString(36).slice(2); }
 
-// ---- Live event seed data ----
-const SEED_EVENTS: Omit<AgentEvent, 'id' | 'timestamp'>[] = [
-  { agent: 'Lead Qualification', agentColor: '#0066cc', description: 'Scored lead john@techcorp.com — 87/100 → Enterprise Sales', type: 'success' },
-  { agent: 'Email Intelligence', agentColor: '#5e5ce6', description: 'Analyzed negative email from sarah@example.com — escalated to Priority queue', type: 'warning' },
-  { agent: 'Customer Success',   agentColor: '#ff9500', description: 'High churn risk detected for Acme Corp — health score dropped to 34', type: 'error'   },
-  { agent: 'Analytics',          agentColor: '#30b0c7', description: 'Pipeline report generated — $485K in active deals identified', type: 'info'    },
-  { agent: 'Lead Qualification', agentColor: '#0066cc', description: 'New lead enriched: Maya Patel, CTO @StartupXYZ — score: 72', type: 'success' },
-  { agent: 'Meeting Scheduler',  agentColor: '#bf5af2', description: 'Executive demo scheduled with Globex Corp — Apr 8, 2:00 PM', type: 'success' },
-  { agent: 'Sales Pipeline',     agentColor: '#34c759', description: 'Deal "Globex Enterprise License" marked as stalled — 14 days inactive', type: 'warning' },
-  { agent: 'Email Intelligence', agentColor: '#5e5ce6', description: 'Personalized reply drafted for pricing inquiry — sentiment: positive', type: 'success' },
-  { agent: 'Customer Success',   agentColor: '#ff9500', description: 'Upsell opportunity identified for TechVentures — $1,200 MRR potential', type: 'info' },
-  { agent: 'Analytics',          agentColor: '#30b0c7', description: 'Weekly pipeline health report sent to leadership team', type: 'info' },
-];
+// Map backend agent name to display label
+const AGENT_DISPLAY: Record<string, { label: string; emoji: string; color: string }> = {
+  LeadQualificationAgent: { label: 'Lead Qualification', emoji: '🎯', color: '#0066cc' },
+  EmailIntelligenceAgent: { label: 'Email Intelligence', emoji: '📧', color: '#5e5ce6' },
+  SalesPipelineAgent:     { label: 'Sales Pipeline',     emoji: '💼', color: '#34c759' },
+  CustomerSuccessAgent:   { label: 'Customer Success',   emoji: '🤝', color: '#ff9500' },
+  MeetingSchedulerAgent:  { label: 'Meeting Scheduler',  emoji: '📅', color: '#bf5af2' },
+  AnalyticsAgent:         { label: 'Analytics',          emoji: '📊', color: '#ff3b30' },
+  AskCRMAgent:            { label: 'Query Agent',         emoji: '🔍', color: '#30b0c7' },
+};
 
-function makeEvent(seed: Omit<AgentEvent, 'id' | 'timestamp'>): AgentEvent {
-  return {
-    ...seed,
-    id: Math.random().toString(36).slice(2),
-    timestamp: new Date().toISOString(),
-  };
+// Map activity type to event type label
+function eventType(actType: string): 'info' | 'success' | 'warning' | 'error' {
+  if (actType.includes('error') || actType.includes('failed')) return 'error';
+  if (actType.includes('warn')  || actType.includes('risk'))   return 'warning';
+  if (actType.includes('done')  || actType.includes('success') || actType.includes('processed') || actType.includes('generated')) return 'success';
+  return 'info';
 }
+
 
 function fmt(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function fmtRelative(iso: string | null): string {
+  if (!iso) return 'Never';
+  const diff = Date.now() - new Date(iso).getTime();
+  const sec = Math.floor(diff / 1000);
+  if (sec < 60)        return `${sec}s ago`;
+  if (sec < 3600)      return `${Math.floor(sec / 60)}m ago`;
+  if (sec < 86400)     return `${Math.floor(sec / 3600)}h ago`;
+  return `${Math.floor(sec / 86400)}d ago`;
 }
 
 function fmtMoney(v: number): string {
@@ -68,11 +69,12 @@ const STAGE_COLORS: Record<string, string> = {
 };
 
 export default function MissionControlPage() {
-  const [stats, setStats]         = useState<DashboardStats | null>(null);
-  const [pipeline, setPipeline]   = useState<PipelineData | null>(null);
-  const [events, setEvents]       = useState<AgentEvent[]>([]);
-  const [loading, setLoading]     = useState(true);
-  const [error, setError]         = useState<string | null>(null);
+  const [stats, setStats]               = useState<DashboardStats | null>(null);
+  const [pipeline, setPipeline]         = useState<PipelineData | null>(null);
+  const [events, setEvents]             = useState<AgentEvent[]>([]);
+  const [agentStatuses, setAgentStatuses] = useState<AgentStatus[]>([]);
+  const [loading, setLoading]           = useState(true);
+  const [error, setError]               = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -87,20 +89,59 @@ export default function MissionControlPage() {
     }
   }, []);
 
+  // Poll real agent events from DB every 5s
+  const fetchAgentActivity = useCallback(async () => {
+    try {
+      const [evtRes, statusRes] = await Promise.all([
+        fetch('http://localhost:8000/api/agents/events?limit=20'),
+        fetch('http://localhost:8000/api/agents/status'),
+      ]);
+      if (evtRes.ok) {
+        const raw = await evtRes.json() as Array<{
+          id: string; agent: string; type: string;
+          details: Record<string, unknown>; timestamp: string;
+        }>;
+        const mapped: AgentEvent[] = raw.map((r) => {
+          const disp = AGENT_DISPLAY[r.agent] || { label: r.agent, emoji: '🤖', color: '#8e8e93' };
+          return {
+            id: r.id,
+            agent: disp.label,
+            agentColor: disp.color,
+            description: `${r.type}: ${JSON.stringify(r.details).slice(0, 80)}`,
+            type: eventType(r.type),
+            timestamp: r.timestamp,
+          };
+        });
+        if (mapped.length > 0) setEvents(mapped);
+      }
+      if (statusRes.ok) {
+        const raw = await statusRes.json() as Array<{
+          name: string; emoji: string; color: string; route: string;
+          status: string; runs_today: number; last_run: string | null;
+        }>;
+        const statuses: AgentStatus[] = raw.map((r) => ({
+          name: AGENT_DISPLAY[r.name]?.label || r.name,
+          id: r.name,
+          color: r.color,
+          emoji: r.emoji,
+          route: r.route,
+          status: r.status as 'active' | 'standby',
+          runsToday: r.runs_today,
+          lastRun: fmtRelative(r.last_run),
+        }));
+        setAgentStatuses(statuses);
+      }
+    } catch { /* backend offline — keep showing last known state */ }
+  }, []);
+
   useEffect(() => {
     fetchData();
-    // Seed initial events
-    const initial = SEED_EVENTS.slice(0, 6).map(makeEvent).reverse();
-    setEvents(initial);
-
-    // Live event stream
-    const interval = setInterval(() => {
-      const seed = SEED_EVENTS[Math.floor(Math.random() * SEED_EVENTS.length)];
-      setEvents((prev) => [makeEvent(seed), ...prev].slice(0, 20));
-    }, 4000);
-
+    fetchAgentActivity();
+    // Poll every 5 seconds for real agent activity
+    const interval = setInterval(fetchAgentActivity, 5000);
     return () => clearInterval(interval);
-  }, [fetchData]);
+  }, [fetchData, fetchAgentActivity]);
+
 
   // Transform pipeline data for Recharts
   const chartData = pipeline
@@ -210,7 +251,11 @@ export default function MissionControlPage() {
             <h2 className="font-700 text-base" style={{ fontWeight: 700 }}>Agent Status</h2>
           </div>
           <div className="divide-y" style={{ borderTop: 'none' }}>
-            {AGENTS.map((agent) => (
+            {agentStatuses.length === 0 ? (
+              <div className="px-4 py-6 text-center">
+                <p style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>Loading agent status...</p>
+              </div>
+            ) : agentStatuses.map((agent) => (
               <div key={agent.id} className="flex items-center gap-3 px-4 py-3">
                 <span style={{ fontSize: 18 }}>{agent.emoji}</span>
                 <div className="flex-1 min-w-0">

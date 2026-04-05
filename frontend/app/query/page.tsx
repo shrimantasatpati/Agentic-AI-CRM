@@ -1,17 +1,14 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import {
-  Send, Copy, Check, ChevronDown, ChevronRight,
-  Download, Database, BarChart2, Table as TableIcon
-} from 'lucide-react';
+import { Send, Download, Database, BarChart2 } from 'lucide-react';
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
 import type { QueryMessage } from '@/types';
 
-// ---- Agentic step definitions for the left panel ----
+// ---- Agentic step definitions for the right panel ----
 const QUERY_STEPS = [
   { name: 'Received user query',      desc: 'Query text parsed and tokenized' },
   { name: 'Classifying intent',       desc: 'Routing to appropriate CRM module' },
@@ -53,9 +50,9 @@ function SmartChart({ data, type }: { data: Record<string, unknown>[]; type: Cha
       value: Number(row[valueKeys[0]]),
     }));
     return (
-      <ResponsiveContainer width="100%" height={200}>
+      <ResponsiveContainer width="100%" height={220}>
         <PieChart>
-          <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} label={({ name, percent }) => `${String(name)} ${((percent ?? 0) * 100).toFixed(0)}%`}>
+          <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={({ name, percent }) => `${String(name)} ${((percent ?? 0) * 100).toFixed(0)}%`}>
             {pieData.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
           </Pie>
           <Tooltip formatter={(v) => String(Number(v).toLocaleString())} />
@@ -66,7 +63,7 @@ function SmartChart({ data, type }: { data: Record<string, unknown>[]; type: Cha
 
   if (type === 'line' && valueKeys.length >= 1) {
     return (
-      <ResponsiveContainer width="100%" height={200}>
+      <ResponsiveContainer width="100%" height={220}>
         <LineChart data={data} margin={{ left: 0, right: 8, top: 4, bottom: 0 }}>
           <XAxis dataKey={labelKey} tick={{ fontSize: 11, fill: 'var(--text-tertiary)' }} axisLine={false} tickLine={false} />
           <YAxis tick={{ fontSize: 11, fill: 'var(--text-tertiary)' }} axisLine={false} tickLine={false} />
@@ -82,7 +79,7 @@ function SmartChart({ data, type }: { data: Record<string, unknown>[]; type: Cha
 
   // Default: bar
   return (
-    <ResponsiveContainer width="100%" height={200}>
+    <ResponsiveContainer width="100%" height={220}>
       <BarChart data={data} margin={{ left: 0, right: 8, top: 4, bottom: 0 }}>
         <XAxis dataKey={labelKey} tick={{ fontSize: 11, fill: 'var(--text-tertiary)' }} axisLine={false} tickLine={false} />
         <YAxis tick={{ fontSize: 11, fill: 'var(--text-tertiary)' }} axisLine={false} tickLine={false} />
@@ -132,7 +129,7 @@ function ResultTable({ data }: { data: Record<string, unknown>[] }) {
   );
 }
 
-// ---- Agentic Steps display on the left ----
+// ---- Agentic Steps display on the RIGHT ----
 type StepStatus = 'waiting' | 'active' | 'done' | 'error';
 interface StepState {
   status: StepStatus;
@@ -150,7 +147,7 @@ function AgentStepsPanel({
   sql?: string;
 }) {
   return (
-    <div className="apple-card h-full" style={{ padding: 0, overflow: 'hidden' }}>
+    <div className="apple-card h-full" style={{ padding: 0, overflow: 'hidden', minHeight: 300 }}>
       <div className="px-4 py-3" style={{ borderBottom: '1px solid var(--border-primary)' }}>
         <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>
           Agentic Execution Steps
@@ -169,7 +166,7 @@ function AgentStepsPanel({
                   style={{
                     background:
                       state.status === 'done'    ? '#34c759' :
-                      state.status === 'active'  ? '#0066cc' :
+                      state.status === 'active'  ? '#ff3b30' :
                       state.status === 'error'   ? '#ff3b30' :
                       'var(--border-primary)',
                     color:
@@ -187,7 +184,7 @@ function AgentStepsPanel({
                       flex: '1 0 16px',
                       background:
                         state.status === 'done' ? '#34c75940' :
-                        state.status === 'active' ? '#0066cc40' :
+                        state.status === 'active' ? '#ff3b3040' :
                         'var(--border-secondary)',
                       minHeight: 16,
                     }}
@@ -196,13 +193,13 @@ function AgentStepsPanel({
               </div>
               {/* Step content */}
               <div className="flex-1 min-w-0 pb-3">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <p
                     className="text-xs font-semibold"
                     style={{
                       color:
                         state.status === 'done'   ? 'var(--text-primary)' :
-                        state.status === 'active' ? '#0066cc' :
+                        state.status === 'active' ? '#ff3b30' :
                         state.status === 'error'  ? '#ff3b30' :
                         'var(--text-tertiary)',
                     }}
@@ -219,7 +216,7 @@ function AgentStepsPanel({
                   <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{step.desc}</p>
                 )}
                 {state.output && (
-                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)', lineHeight: 1.4, wordBreak: 'break-word' }}>
                     {state.output}
                   </p>
                 )}
@@ -235,7 +232,75 @@ function AgentStepsPanel({
           <p className="text-xs font-semibold mb-1" style={{ color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
             Generated SQL
           </p>
-          <div className="code-block" style={{ fontSize: 10 }}>{sql}</div>
+          <div className="code-block" style={{ fontSize: 10, wordBreak: 'break-all', whiteSpace: 'pre-wrap' }}>{sql}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---- Inline result card shown inside the chat bubble ----
+function InlineResultCard({
+  data,
+  chartType,
+  onChartTypeChange,
+  showChart,
+  onShowChartChange,
+}: {
+  data: Record<string, unknown>[];
+  chartType: ChartType;
+  onChartTypeChange: (t: ChartType) => void;
+  showChart: boolean;
+  onShowChartChange: (v: boolean) => void;
+}) {
+  if (!data || data.length === 0) return null;
+  return (
+    <div className="apple-card mt-3" style={{ padding: '14px 16px' }}>
+      {/* Chart type toggles */}
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
+        <p className="text-xs font-semibold uppercase" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>
+          Visualization
+        </p>
+        <div className="flex gap-1 ml-auto flex-wrap">
+          {(['bar', 'line', 'pie'] as ChartType[]).map((t) => (
+            <button
+              key={t}
+              onClick={() => { onChartTypeChange(t); onShowChartChange(true); }}
+              className="px-2 py-1 rounded-md text-xs font-semibold"
+              style={{
+                background: showChart && chartType === t ? '#ff3b30' : 'var(--bg-input)',
+                color: showChart && chartType === t ? '#fff' : 'var(--text-secondary)',
+              }}
+            >
+              {t}
+            </button>
+          ))}
+          <button
+            onClick={() => onShowChartChange(false)}
+            className="px-2 py-1 rounded-md text-xs font-semibold"
+            style={{
+              background: !showChart ? '#ff3b30' : 'var(--bg-input)',
+              color: !showChart ? '#fff' : 'var(--text-secondary)',
+            }}
+          >
+            table
+          </button>
+        </div>
+      </div>
+
+      {showChart ? (
+        <SmartChart data={data} type={chartType} />
+      ) : (
+        <ResultTable data={data} />
+      )}
+
+      {/* Always show table below chart */}
+      {showChart && (
+        <div className="mt-3 pt-3" style={{ borderTop: '1px solid var(--border-secondary)' }}>
+          <p className="text-xs font-semibold uppercase mb-2" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>
+            Raw Data
+          </p>
+          <ResultTable data={data} />
         </div>
       )}
     </div>
@@ -258,14 +323,14 @@ export default function QueryPage() {
   const [loading, setLoading]       = useState(false);
   const [stepStates, setStepStates] = useState<StepState[]>(QUERY_STEPS.map(() => ({ status: 'waiting' })));
   const [currentSql, setCurrentSql] = useState<string>('');
-  const [chartType, setChartType]   = useState<ChartType>('bar');
-  const [showChart, setShowChart]   = useState(true);
+  // Per-message chart state keyed by message id
+  const [chartTypes, setChartTypes] = useState<Record<string, ChartType>>({});
+  const [showCharts, setShowCharts] = useState<Record<string, boolean>>({});
   const chatEndRef                  = useRef<HTMLDivElement>(null);
-  const latestAssistant             = messages.filter((m) => m.role === 'assistant').slice(-1)[0];
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
-  // Animate steps while loading, driven by real backend steps when they arrive
+  // Animate steps while loading
   const animateSteps = async (realSteps?: string[]) => {
     const STEP_COUNT = QUERY_STEPS.length;
     // Reset
@@ -277,10 +342,10 @@ export default function QueryPage() {
         next[i] = { status: 'active' };
         return next;
       });
-      const delay = 300 + Math.random() * 400;
+      const delay = 280 + Math.random() * 320;
       await new Promise((r) => setTimeout(r, delay));
       const output  = realSteps?.[i] || QUERY_STEPS[i].desc;
-      const ms      = Math.round(250 + Math.random() * 400);
+      const ms      = Math.round(200 + Math.random() * 350);
       setStepStates((prev) => {
         const next = [...prev];
         next[i] = { status: 'done', output, ms };
@@ -336,10 +401,12 @@ export default function QueryPage() {
 
     // Detect chart type
     const detectedType = detectChartType(data);
-    setChartType(detectedType);
+    const msgId = makeId();
+    setChartTypes((prev) => ({ ...prev, [msgId]: detectedType }));
+    setShowCharts((prev) => ({ ...prev, [msgId]: true }));
 
     const aiMsg: QueryMessage = {
-      id: makeId(),
+      id: msgId,
       role: 'assistant',
       content: summary || `Query executed. Found ${data.length} result${data.length !== 1 ? 's' : ''}.`,
       sql,
@@ -355,7 +422,7 @@ export default function QueryPage() {
   };
 
   return (
-    <div className="space-y-4">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, height: '100%' }}>
       {/* Header */}
       <div>
         <div className="flex items-center gap-2 mb-0.5">
@@ -373,17 +440,20 @@ export default function QueryPage() {
         ))}
       </div>
 
-      <div className="flex gap-4 items-start">
-        {/* ── LEFT: Agentic steps ── */}
-        <div style={{ width: 280, flexShrink: 0 }}>
-          <AgentStepsPanel steps={QUERY_STEPS} stepStates={stepStates} sql={currentSql} />
-        </div>
+      {/* Main area: Chat (left/center, flex-1) + Steps panel (right, fixed width) */}
+      <div style={{ display: 'flex', gap: 20, flex: '1 1 auto', minHeight: 0, alignItems: 'flex-start' }}>
 
-        {/* ── CENTER: Chat ── */}
-        <div className="flex flex-col" style={{ flex: '0 0 380px', minWidth: 0 }}>
-          <div className="apple-card flex flex-col" style={{ padding: 0, overflow: 'hidden' }}>
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4" style={{ maxHeight: 520 }}>
+        {/* ── CHAT COLUMN — takes all remaining width ── */}
+        <div style={{ flex: '1 1 0', minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+          <div
+            className="apple-card"
+            style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
+          >
+            {/* Messages scroll area */}
+            <div
+              className="flex-1 overflow-y-auto p-5 space-y-5"
+              style={{ minHeight: 320, maxHeight: 'calc(100vh - 340px)' }}
+            >
               {messages.length === 0 && (
                 <div className="flex flex-col items-center justify-center h-40 text-center">
                   <Database size={32} color="var(--text-tertiary)" />
@@ -395,27 +465,54 @@ export default function QueryPage() {
               {messages.map((msg) => (
                 <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in-up`}>
                   {msg.role === 'user' ? (
-                    <div className="px-4 py-2.5 rounded-2xl rounded-tr-sm max-w-xs"
-                      style={{ background: '#0066cc', color: '#fff', fontSize: 14 }}>
+                    <div
+                      className="rounded-2xl rounded-tr-sm"
+                      style={{
+                        background: '#ff3b30',
+                        color: '#fff',
+                        fontSize: 14,
+                        padding: '10px 16px',
+                        maxWidth: '75%',
+                        wordBreak: 'break-word',
+                        lineHeight: 1.5,
+                      }}
+                    >
                       {msg.content}
                     </div>
                   ) : (
-                    <div className="apple-glass max-w-full px-4 py-3 rounded-2xl rounded-tl-sm" style={{ maxWidth: '96%' }}>
-                      <p className="text-sm" style={{ color: 'var(--text-primary)', lineHeight: 1.5 }}>
-                        {msg.content}
-                      </p>
-                      {msg.sql && (
-                        <div className="mt-2">
-                          <p className="text-xs font-semibold mb-1" style={{ color: 'var(--text-tertiary)' }}>SQL</p>
-                          <div className="code-block" style={{ fontSize: 10, maxHeight: 80, overflowY: 'auto' }}>
-                            {msg.sql}
-                          </div>
-                        </div>
-                      )}
-                      {typeof msg.row_count === 'number' && (
-                        <p className="text-xs mt-1.5" style={{ color: 'var(--text-tertiary)' }}>
-                          {msg.row_count} rows · {msg.execution_time_ms}ms
+                    <div style={{ width: '100%' }}>
+                      {/* Agent reply bubble */}
+                      <div
+                        className="apple-glass rounded-2xl rounded-tl-sm"
+                        style={{ padding: '12px 16px', width: '100%' }}
+                      >
+                        <p className="text-sm" style={{ color: 'var(--text-primary)', lineHeight: 1.6, wordBreak: 'break-word' }}>
+                          {msg.content}
                         </p>
+                        {msg.sql && (
+                          <div className="mt-2">
+                            <p className="text-xs font-semibold mb-1" style={{ color: 'var(--text-tertiary)' }}>SQL Used</p>
+                            <div className="code-block" style={{ fontSize: 10, maxHeight: 100, overflowY: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                              {msg.sql}
+                            </div>
+                          </div>
+                        )}
+                        {typeof msg.row_count === 'number' && (
+                          <p className="text-xs mt-1.5" style={{ color: 'var(--text-tertiary)' }}>
+                            {msg.row_count} rows · {msg.execution_time_ms}ms
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Charts + table rendered INLINE with the assistant message */}
+                      {msg.data && (msg.data as Record<string, unknown>[]).length > 0 && (
+                        <InlineResultCard
+                          data={msg.data as Record<string, unknown>[]}
+                          chartType={chartTypes[msg.id] || 'bar'}
+                          onChartTypeChange={(t) => setChartTypes((prev) => ({ ...prev, [msg.id]: t }))}
+                          showChart={showCharts[msg.id] !== false}
+                          onShowChartChange={(v) => setShowCharts((prev) => ({ ...prev, [msg.id]: v }))}
+                        />
                       )}
                     </div>
                   )}
@@ -442,7 +539,7 @@ export default function QueryPage() {
                 <input
                   type="text"
                   className="flex-1 bg-transparent border-none outline-none text-sm"
-                  style={{ color: 'var(--text-primary)' }}
+                  style={{ color: 'var(--text-primary)', minWidth: 0 }}
                   placeholder="Ask anything about your data..."
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
@@ -465,72 +562,24 @@ export default function QueryPage() {
           </div>
         </div>
 
-        {/* ── RIGHT: Results with chart ── */}
-        <div className="flex-1 min-w-0">
-          {latestAssistant ? (
-            <div className="space-y-3 animate-fade-in-up">
-              {/* Chart / Table toggle */}
-              {latestAssistant.data && (latestAssistant.data as Record<string, unknown>[]).length > 0 && (
-                <div className="apple-card">
-                  <div className="flex items-center gap-2 mb-3">
-                    <p className="text-xs font-semibold uppercase" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>
-                      Visualization
-                    </p>
-                    <div className="flex gap-1 ml-auto">
-                      {(['bar', 'line', 'pie'] as ChartType[]).map((t) => (
-                        <button
-                          key={t}
-                          onClick={() => { setChartType(t); setShowChart(true); }}
-                          className="px-2 py-1 rounded-md text-xs font-semibold"
-                          style={{
-                            background: showChart && chartType === t ? '#0066cc' : 'var(--bg-input)',
-                            color: showChart && chartType === t ? '#fff' : 'var(--text-secondary)',
-                          }}
-                        >
-                          {t}
-                        </button>
-                      ))}
-                      <button
-                        onClick={() => setShowChart(false)}
-                        className="px-2 py-1 rounded-md text-xs font-semibold"
-                        style={{
-                          background: !showChart ? '#0066cc' : 'var(--bg-input)',
-                          color: !showChart ? '#fff' : 'var(--text-secondary)',
-                        }}
-                      >
-                        table
-                      </button>
-                    </div>
-                  </div>
+        {/* ── RIGHT: Agentic Steps (fixed width) ── */}
+        <div style={{ width: 300, flexShrink: 0 }}>
+          <AgentStepsPanel steps={QUERY_STEPS} stepStates={stepStates} sql={currentSql} />
 
-                  {showChart ? (
-                    <SmartChart
-                      data={latestAssistant.data as Record<string, unknown>[]}
-                      type={chartType}
-                    />
-                  ) : (
-                    <ResultTable data={latestAssistant.data as Record<string, unknown>[]} />
-                  )}
-                </div>
-              )}
-
-              {/* Always show table below chart */}
-              {showChart && latestAssistant.data && (latestAssistant.data as Record<string, unknown>[]).length > 0 && (
-                <div className="apple-card">
-                  <p className="text-xs font-semibold uppercase mb-2" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>
-                    Raw Data
-                  </p>
-                  <ResultTable data={latestAssistant.data as Record<string, unknown>[]} />
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="apple-card flex flex-col items-center justify-center" style={{ minHeight: 300, opacity: 0.5 }}>
-              <BarChart2 size={36} color="var(--text-tertiary)" />
-              <p className="text-sm mt-3" style={{ color: 'var(--text-tertiary)' }}>Charts & data will appear here</p>
+          {/* Placeholder when no results yet */}
+          {messages.filter((m) => m.role === 'assistant').length === 0 && (
+            <div
+              className="apple-card flex flex-col items-center justify-center mt-4"
+              style={{ minHeight: 120, opacity: 0.5 }}
+            >
+              <BarChart2 size={28} color="var(--text-tertiary)" />
+              <p className="text-xs mt-2" style={{ color: 'var(--text-tertiary)', textAlign: 'center' }}>
+                Charts appear inline with agent responses
+              </p>
             </div>
           )}
         </div>
+
       </div>
     </div>
   );

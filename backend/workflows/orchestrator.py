@@ -31,15 +31,15 @@ class MultiLLMWrapper:
 
     # Registry of supported providers
     PROVIDERS = {
-        "gemini": {
-            "env_key":  "GEMINI_API_KEY",
-            "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
-            "default_model": "gemini-2.5-flash-lite-preview-06-17",
-        },
         "groq": {
             "env_key":  "GROQ_API_KEY",
             "base_url": "https://api.groq.com/openai/v1",
             "default_model": "llama-3.1-8b-instant",
+        },
+        "gemini": {
+            "env_key":  "GEMINI_API_KEY",
+            "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+            "default_model": "gemini-2.0-flash",
         },
         "xai": {
             "env_key":  "XAI_API_KEY",
@@ -60,7 +60,8 @@ class MultiLLMWrapper:
         force_provider = os.getenv("MODEL_PROVIDER", "").lower()
 
         provider_order = [force_provider] if force_provider in self.PROVIDERS else []
-        provider_order += [p for p in ["gemini", "groq", "xai"] if p not in provider_order]
+        # Groq is first — it has the most generous free-tier rate limits
+        provider_order += [p for p in ["groq", "gemini", "xai"] if p not in provider_order]
 
         for provider in provider_order:
             cfg = self.PROVIDERS[provider]
@@ -70,7 +71,9 @@ class MultiLLMWrapper:
 
             # Use preferred_model if supplied and it belongs to this provider,
             # otherwise fall back to the provider default.
-            model = preferred_model or os.getenv("GEMINI_MODEL_NAME") if provider == "gemini" else None
+            # NOTE: parentheses are required — without them Python parses
+            # 'a or b if c else d' as '(a or b) if c else d', not the intent.
+            model = (preferred_model or os.getenv("GEMINI_MODEL_NAME")) if provider == "gemini" else None
             model = model or cfg["default_model"]
 
             try:
@@ -120,7 +123,7 @@ class MultiLLMWrapper:
         except Exception as e:
             print(f"[LLM] Switch to {model_name} failed: {e}")
 
-    async def generate(self, prompt: str) -> str:
+    async def generate(self, prompt: str, max_tokens: int = 512) -> str:
         if self._client is None:
             return f"[MOCK — no LLM configured] Prompt received: {prompt[:80]}..."
 
@@ -128,7 +131,8 @@ class MultiLLMWrapper:
             response = await self._client.chat.completions.create(
                 model=self.model_name,
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=1024,
+                max_tokens=max_tokens,
+                temperature=0.1,  # Low temperature reduces hallucination
             )
             return response.choices[0].message.content or ""
         except Exception as e:
@@ -444,35 +448,32 @@ class AgentOrchestrator:
     # UNIFIED QUERY HANDLER
     # ========================================================================
 
+    # ---- Fast keyword-based intent router (no LLM call needed) ----
+    @staticmethod
+    def _classify_intent_keywords(prompt: str) -> str:
+        """Classify query intent using keywords — avoids spending an LLM call on routing."""
+        p = prompt.lower()
+        if any(w in p for w in ['deal', 'pipeline', 'revenue', 'stage', 'closing', 'won', 'lost', 'stalled']):
+            return 'sales'
+        if any(w in p for w in ['lead', 'prospect', 'score', 'qualify', 'qualification', 'contact']):
+            return 'leads'
+        if any(w in p for w in ['customer', 'churn', 'health', 'mrr', 'arr', 'retention', 'upsell', 'account']):
+            return 'customers'
+        return 'analytics'  # default
+
     async def handle_user_query(self, prompt: str, db: Session) -> Dict[str, Any]:
         """
         Unified entry point for user natural language queries.
-        1. Uses LLM to classify intent
-        2. Routes to AskCRMAgent for SQL generation + execution
-        3. Returns data, SQL, steps, and summary
+        1. Keyword-based intent classification (NO LLM call — saves rate limit quota)
+        2. Routes to AskCRMAgent for SQL generation + execution (1 LLM call)
+        3. Returns data, SQL, steps, and summary (1 LLM call for summary)
         """
         steps: List[str] = []
-        prompt_lower = prompt.lower()
         steps.append("🔍 Classifying user intent and extracting entities...")
 
-        routing_prompt = f"""
-        You are an AI CRM Director. Classify the user query into ONE of these categories:
-        - "analytics": Metrics, KPIs, trends, total counts, growth, overview.
-        - "sales": Deals, pipeline, revenue, closing dates, specific deal names.
-        - "leads": New prospects, qualification, scoring, specific lead emails.
-        - "customers": Retention, churn, health, satisfaction, specific account names.
-
-        User Query: "{prompt}"
-
-        Return ONLY the word of the category. No punctuation.
-        """
-
-        category = "analytics"
-        try:
-            category = (await self.llm.generate(routing_prompt)).strip().lower()
-            steps.append(f"🎯 Intent identified as: {category.upper()}. Dispatching CRM SQL Agent.")
-        except Exception as e:
-            steps.append("⚠️ Intent classification ambiguous, defaulting to SQL Agent.")
+        # Fast keyword routing — no LLM call, zero latency, zero tokens consumed
+        category = self._classify_intent_keywords(prompt)
+        steps.append(f"🎯 Intent identified as: {category.upper()} (keyword match). Dispatching CRM SQL Agent.")
 
         data: List[Any] = []
         sql  = ""
@@ -491,13 +492,14 @@ class AgentOrchestrator:
 
             if not summary:
                 steps.append("🧩 Synthesizing narrative response...")
-                summary_prompt = f"""
-                Summarize the following CRM data for the user in a professional, concise, and helpful tone.
-                Data: {str(data)[:400]}
-                Query: "{prompt}"
-                Return ONLY the summary text (max 2 sentences).
-                """
-                summary = await self.llm.generate(summary_prompt)
+                # Trim data to reduce token usage
+                data_snippet = str(data[:10])[:300]
+                summary_prompt = (
+                    f'CRM query: "{prompt[:120]}". '
+                    f'Result ({len(data)} rows): {data_snippet}. '
+                    f'Write a 1–2 sentence professional summary of the results.'
+                )
+                summary = await self.llm.generate(summary_prompt, max_tokens=200)
 
             return {
                 "status": "success",

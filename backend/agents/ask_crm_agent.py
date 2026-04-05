@@ -1,17 +1,21 @@
-"""Ask CRM Agent - Specialized in SQL generation and self-healing data extraction"""
+"""Ask CRM Agent - SQL generation with dynamic schema, SQL validation, and metadata profiling"""
 
 from typing import Dict, Any, List, Tuple
 from .base_agent import BaseAgent
 from sqlalchemy import text
-import re
+from services.schema_inspector import get_schema_formatted
+from services.sql_validator import validate_sql, extract_sql
+from services.metadata_profiler import build_metadata_profile, strip_pii_from_rows, build_chart_suggestion
 
 
 class AskCRMAgent(BaseAgent):
     """
     Autonomous agent that:
+    - Dynamically discovers the live DB schema (no hardcoded strings)
     - Generates SQLite queries based on NL questions
-    - Self-corrects SQL errors (3x retry)
-    - Validates results against the schema
+    - Validates SQL before execution (blocks mutations)
+    - Self-corrects SQL errors (3x retry with error feedback)
+    - Profiles query results without sending raw data to LLM
     - Summarizes data for the end user
     """
 
@@ -24,49 +28,68 @@ class AskCRMAgent(BaseAgent):
             redis_client=redis_client
         )
         self.max_retries = 3
-        self.schema_hint = """
-        Schema Reference:
-        - Deals: id, name, value, stage, health_score, is_stalled, last_activity
-        - Leads (Contacts): id, email, first_name, last_name, lead_score, lead_status, job_title
-        - Customers: id, name, health_score, churn_risk, churn_probability
-        - MetricsDaily: date, category, value
-        - Emails: id, from_email, to_email, subject, sentiment, priority
-        """
 
     async def execute(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute Ask CRM workflow with self-healing SQL"""
+        """Execute Ask CRM workflow with dynamic schema + self-healing SQL"""
         prompt = task.get("prompt", "")
         db = task.get("db")
         steps = []
 
         steps.append("🔍 Analyzing user intent and mapping to CRM schema...")
-        
-        sql_result, data, agent_steps = await self.execute_sql_with_retry(prompt, db)
+
+        # Step 1: Discover live schema from DB (no hardcoded strings)
+        steps.append("📋 Discovering live database schema...")
+        schema_str = ""
+        if db is not None:
+            try:
+                from database.connection import engine
+                schema_str = get_schema_formatted(engine)
+                steps.append(f"✅ Schema discovered: {schema_str.count('Table:')} tables found")
+            except Exception as e:
+                steps.append(f"⚠️ Schema discovery failed, using fallback: {e}")
+
+        # Step 2: SQL generation + validation + execution with retry loop
+        sql_result, data, agent_steps = await self.execute_sql_with_retry(prompt, db, schema_str)
         steps.extend(agent_steps)
 
         if not data and sql_result:
-             steps.append("⚠️ Data retrieval unsuccessful. Attempting fallback summary.")
-        
+            steps.append("⚠️ Data retrieval unsuccessful. Attempting fallback summary.")
+
+        # Step 3: Build metadata profile (no raw data sent to LLM)
+        steps.append("🔒 Building privacy-safe metadata profile...")
+        profile = build_metadata_profile(data)
+        safe_data = strip_pii_from_rows(data, profile.get("pii_columns", []))
+
+        # Step 4: LLM summary using metadata only (not raw values)
         steps.append("🧩 Reasoning Agent synthesizing final narrative response...")
-        
-        summary_prompt = f"""
-        Summarize the following CRM data for the user in a professional, concise, and helpful tone.
-        Query: "{prompt}"
-        Data: {str(data)[:500]} (showing snippet)
-        
-        Return ONLY the summary text (max 2 sentences).
-        """
+        data_snippet = str(safe_data[:5])[:300]  # Max 5 rows, 300 chars for summary input
+        summary_prompt = (
+            f'CRM query: "{prompt[:100]}". '
+            f'Result ({len(data)} rows): {data_snippet}. '
+            f'Write a 1-2 sentence professional summary.'
+        )
         summary = await self.think(summary_prompt)
+
+        # Suggest chart type without an extra LLM call
+        chart_suggestion = build_chart_suggestion(profile, prompt)
+        steps.append(f"📊 Chart type suggested: {chart_suggestion}")
 
         return {
             "summary": summary.strip(),
-            "data": data,
+            "data": safe_data,
             "sql": sql_result,
-            "steps": steps
+            "steps": steps,
+            "chart_suggestion": chart_suggestion,
+            "metadata": {
+                "row_count": len(data),
+                "pii_columns_redacted": profile.get("pii_columns", []),
+            },
         }
 
-    async def execute_sql_with_retry(self, query_prompt: str, db: Any) -> Tuple[str, List[Dict[str, Any]], List[str]]:
-        """Implementation of the 3x self-healing SQL engine"""
+    async def execute_sql_with_retry(
+        self, query_prompt: str, db: Any, schema_str: str
+    ) -> Tuple[str, List[Dict[str, Any]], List[str]]:
+        """Self-healing SQL engine: generate → validate → execute, up to max_retries."""
         steps = []
         current_try = 1
         last_error = None
@@ -76,33 +99,39 @@ class AskCRMAgent(BaseAgent):
         while current_try <= self.max_retries:
             try:
                 steps.append(f"🛠️ Step: Generating optimized SQL query (Attempt {current_try})...")
-                
-                gen_prompt = f"""
-                You are a CRM Database Expert. Generate a valid SQLite query for the following user question.
-                Question: "{query_prompt}"
-                
-                {self.schema_hint}
-                
-                {f"Your previous SQL failed with this error: {last_error}. Please fix the syntax or logic." if last_error else ""}
-                
-                Return ONLY the raw SQL string. No markdown, no '```sql'.
-                """
-                
-                sql = await self.think(gen_prompt)
-                sql = sql.replace("```sql", "").replace("```", "").strip()
-                
-                # Execute SQL
-                steps.append(f"🚀 Step: Executing Query: {sql[:60]}...")
+
+                error_hint = f"Previous SQL failed: {last_error}. Fix it.\n" if last_error else ""
+                gen_prompt = (
+                    f"SQLite CRM Expert. Generate a valid SQLite SELECT query.\n"
+                    f"Question: \"{query_prompt[:200]}\"\n\n"
+                    f"DATABASE SCHEMA:\n{schema_str[:1500]}\n\n"
+                    f"{error_hint}"
+                    f"Return ONLY raw SQL. No markdown, no ```sql."
+                )
+
+                raw_sql = await self.think(gen_prompt)
+                sql = extract_sql(raw_sql) or raw_sql.replace("```sql", "").replace("```", "").strip()
+
+                # Validate before execution — block destructive queries
+                valid, reason = validate_sql(sql)
+                if not valid:
+                    last_error = f"SQL Validation Failed: {reason}"
+                    steps.append(f"❌ Step: Validation failed (Attempt {current_try}): {reason}")
+                    current_try += 1
+                    continue
+
+                # Execute
+                steps.append(f"🚀 Step: Executing: {sql[:80]}...")
                 res = db.execute(text(sql)).fetchall()
                 data = [dict(r._mapping) for r in res]
-                
+
                 steps.append(f"✅ Step: Result extraction successful. {len(data)} rows retrieved.")
                 return sql, data, steps
 
             except Exception as e:
                 last_error = str(e)
-                steps.append(f"❌ Step: SQL Attempt {current_try} failed: {last_error[:40]}...")
+                steps.append(f"❌ Step: SQL Attempt {current_try} failed: {last_error[:60]}...")
                 current_try += 1
-                
+
         steps.append("🛑 Step: SQL Agent exhausted retries. Using safety fallback.")
         return sql, [], steps

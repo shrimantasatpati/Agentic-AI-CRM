@@ -76,7 +76,7 @@ class BaseAgent(ABC):
         return self.state.get(key)
 
     async def log_activity(self, activity_type: str, details: Dict[str, Any]) -> None:
-        """Log agent activity for audit trail"""
+        """Log agent activity for audit trail — writes to DB and prints"""
         log_entry: Dict[str, Any] = {
             "agent": self.name,
             "type": activity_type,
@@ -86,6 +86,22 @@ class BaseAgent(ABC):
 
         if self.redis is not None:
             await self.redis.lpush(f"agent:{self.name}:logs", json.dumps(log_entry))
+
+        # Write to SQLite agent_logs table so the frontend can poll real events
+        try:
+            from database.connection import SessionLocal
+            from database.models import AgentLog
+            db = SessionLocal()
+            db_log = AgentLog(
+                agent_name=self.name,
+                activity_type=activity_type,
+                details=details,
+            )
+            db.add(db_log)
+            db.commit()
+            db.close()
+        except Exception as e:
+            pass  # Never block agent execution due to logging failure
 
         print(f"[{self.name}] {activity_type}: {details}")
 

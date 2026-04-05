@@ -352,6 +352,207 @@ async def form_webhook_tracked(
     return {"status": "processed", "agent_result": result}
 
 
+
+# ============================================================================
+# LIVE AGENT ACTIVITY — real data from agent_logs table
+# ============================================================================
+
+@app.get("/api/agents/events")
+async def get_agent_events(limit: int = 25, db: Session = Depends(get_db)):
+    """Return most recent agent activity events. Frontend polls this every 5s."""
+    from database.models import AgentLog
+    from sqlalchemy import desc
+    logs = db.query(AgentLog).order_by(desc(AgentLog.created_at)).limit(limit).all()
+    return [
+        {
+            "id": log.id, "agent": log.agent_name, "type": log.activity_type,
+            "details": log.details,
+            "timestamp": log.created_at.isoformat() if log.created_at else None,
+        }
+        for log in logs
+    ]
+
+
+@app.get("/api/agents/status")
+async def get_agent_status_live(db: Session = Depends(get_db)):
+    """Return per-agent run count + last run time from real DB logs."""
+    from database.models import AgentLog
+    from sqlalchemy import func, desc
+    from datetime import date
+    known_agents = [
+        {"name": "LeadQualificationAgent", "emoji": "\U0001f3af", "color": "#0066cc", "route": "/leads"},
+        {"name": "EmailIntelligenceAgent", "emoji": "\U0001f4e7", "color": "#5e5ce6", "route": "/email"},
+        {"name": "SalesPipelineAgent",     "emoji": "\U0001f4bc", "color": "#34c759", "route": "/pipeline"},
+        {"name": "CustomerSuccessAgent",   "emoji": "\U0001f91d", "color": "#ff9500", "route": "/customers"},
+        {"name": "MeetingSchedulerAgent",  "emoji": "\U0001f4c5", "color": "#bf5af2", "route": "/meetings"},
+        {"name": "AnalyticsAgent",         "emoji": "\U0001f4ca", "color": "#ff3b30", "route": "/analytics"},
+        {"name": "AskCRMAgent",            "emoji": "\U0001f50d", "color": "#30b0c7", "route": "/query"},
+    ]
+    today = date.today()
+    results = []
+    for a in known_agents:
+        runs = db.query(func.count(AgentLog.id)).filter(
+            AgentLog.agent_name == a["name"],
+            func.date(AgentLog.created_at) == today
+        ).scalar() or 0
+        last = db.query(AgentLog).filter(AgentLog.agent_name == a["name"]).order_by(desc(AgentLog.created_at)).first()
+        results.append({
+            "name": a["name"], "emoji": a["emoji"], "color": a["color"], "route": a["route"],
+            "status": "active" if runs > 0 else "standby",
+            "runs_today": runs,
+            "last_run": last.created_at.isoformat() if last and last.created_at else None,
+        })
+    return results
+
+
+# ============================================================================
+# GMAIL OAUTH + EMAIL OPERATIONS
+# ============================================================================
+
+@app.get("/api/auth/gmail")
+async def gmail_auth_start():
+    """Step 1 of Gmail OAuth2 — returns the URL the user must visit."""
+    try:
+        from services.gmail_service import get_oauth_authorization_url
+        auth_url, state = get_oauth_authorization_url(
+            redirect_uri="http://localhost:8000/api/auth/gmail/callback"
+        )
+        return {"auth_url": auth_url, "state": state,
+                "instructions": "Open auth_url in your browser to authorize Gmail"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/auth/gmail/callback")
+async def gmail_auth_callback(code: str, state: str = ""):
+    """Step 2 — Google redirects here after user approval."""
+    try:
+        from services.gmail_service import complete_oauth_flow
+        complete_oauth_flow(auth_code=code, redirect_uri="http://localhost:8000/api/auth/gmail/callback")
+        return {"status": "Gmail authorized! You can now use /api/emails/sync"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/auth/gmail/status")
+async def gmail_auth_status():
+    """Check if Gmail OAuth token is present and valid."""
+    from services.gmail_service import is_authenticated
+    authed = is_authenticated()
+    return {"authenticated": authed,
+            "message": "Gmail connected" if authed else "Not connected — GET /api/auth/gmail to authorize"}
+
+
+@app.get("/api/emails/sync")
+async def sync_gmail_emails(limit: int = 20, db: Session = Depends(get_db)):
+    """Fetch unread Gmail emails and save new ones to CRM."""
+    from services.gmail_service import fetch_unread_emails
+    from database.models import Email as EmailModel
+    try:
+        gmail_emails = fetch_unread_emails(max_results=limit)
+        saved_count = 0
+        for ge in gmail_emails:
+            existing = db.query(EmailModel).filter(
+                EmailModel.from_email == ge.get("from", ""),
+                EmailModel.subject == ge.get("subject", "")
+            ).first()
+            if not existing:
+                db.add(EmailModel(
+                    from_email=ge.get("from", ""), to_email=ge.get("to", ""),
+                    subject=ge.get("subject", ""), body=ge.get("body", ""),
+                    direction="inbound",
+                    extra_metadata={"gmail_id": ge.get("gmail_id"), "thread_id": ge.get("thread_id")},
+                ))
+                saved_count += 1
+        db.commit()
+        return {"status": "success", "fetched": len(gmail_emails), "saved_to_crm": saved_count, "emails": gmail_emails}
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Gmail sync failed: {e}")
+
+
+class SendReplyRequest(BaseModel):
+    to_email: str
+    subject: str
+    body: str
+    thread_id: str = None
+
+
+@app.post("/api/emails/send-reply")
+async def send_email_reply(req: SendReplyRequest, db: Session = Depends(get_db)):
+    """Send an AI-drafted email reply via Gmail API and save to CRM."""
+    from services.gmail_service import send_reply
+    from database.models import Email as EmailModel
+    try:
+        result = send_reply(to_email=req.to_email, subject=req.subject, body=req.body, thread_id=req.thread_id)
+        if result.get("success"):
+            db.add(EmailModel(
+                from_email="me", to_email=req.to_email, subject=req.subject, body=req.body,
+                direction="outbound", response_sent=True,
+                extra_metadata={"gmail_message_id": result.get("gmail_message_id")},
+            ))
+            db.commit()
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Gmail send failed: {e}")
+
+
+# ============================================================================
+# GOOGLE CALENDAR — REAL AVAILABILITY + BOOKING
+# ============================================================================
+
+@app.get("/api/calendar/availability")
+async def get_calendar_availability(attendees: str = "", duration: int = 30, days_ahead: int = 7):
+    """Query real Calendar freebusy API. attendees = comma-separated emails."""
+    from services.calendar_service import find_available_slots
+    try:
+        attendee_list = [e.strip() for e in attendees.split(",") if e.strip()]
+        slots = find_available_slots(attendee_emails=attendee_list, duration_minutes=duration, days_ahead=days_ahead)
+        return {"slots": slots, "attendees": attendee_list, "duration_minutes": duration}
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Calendar check failed: {e}")
+
+
+class BookMeetingRequest(BaseModel):
+    title: str
+    start_iso: str
+    end_iso: str
+    attendee_emails: List[str]
+    description: str = ""
+    meeting_type: str = "general"
+
+
+@app.post("/api/meetings/schedule-and-book")
+async def schedule_and_book_meeting(req: BookMeetingRequest, db: Session = Depends(get_db)):
+    """Book a meeting in Google Calendar AND save it to the CRM meetings table."""
+    from services.calendar_service import create_event
+    from database.models import Meeting
+    from datetime import datetime as dt
+    try:
+        cal_result = create_event(
+            title=req.title, start_iso=req.start_iso, end_iso=req.end_iso,
+            attendee_emails=req.attendee_emails, description=req.description, add_meet_link=True,
+        )
+        try:
+            scheduled_at = dt.fromisoformat(req.start_iso.replace("Z", "+00:00"))
+        except ValueError:
+            scheduled_at = dt.utcnow()
+        meeting = Meeting(
+            title=req.title, meeting_type=req.meeting_type, scheduled_at=scheduled_at,
+            attendees=req.attendee_emails,
+            status="confirmed" if cal_result.get("success") else "pending",
+            extra_metadata=cal_result,
+        )
+        db.add(meeting)
+        db.commit()
+        db.refresh(meeting)
+        return {
+            "crm_meeting_id": meeting.id, "calendar": cal_result,
+            "message": "Meeting booked and saved to CRM" if cal_result.get("success") else "Saved to CRM (connect Calendar first)",
+        }
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Meeting booking failed: {e}")
+
+
 # ============================================================================
 # RUN SERVER
 # ============================================================================
