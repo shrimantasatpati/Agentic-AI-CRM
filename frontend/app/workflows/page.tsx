@@ -9,32 +9,32 @@ import WorkflowSteps from '@/components/WorkflowSteps';
 // ============================================================
 
 const LEAD_STEPS = [
-  { name: 'Received lead data',        output: 'Lead parsed and validated' },
-  { name: 'Extracting company domain', output: 'techcorp.com — SaaS company identified' },
-  { name: 'Enriching contact data',    output: 'Company: 201–500 employees · Industry: SaaS' },
-  { name: 'Calculating lead score',    output: 'Score: 91/100 — Enterprise-tier prospect' },
-  { name: 'Identifying buying signals',output: '5 signals: demo request, budget approved, executive' },
-  { name: 'Routing to sales team',     output: 'Routed: Enterprise Sales · Priority: HIGH · SLA: 24h' },
-  { name: 'Notifying downstream agents', output: 'Email Intelligence Agent notified ✓' },
+  { name: 'Received lead data',        output: 'Lead data parsed and validated' },
+  { name: 'Extracting company domain', output: 'Domain extracted from email, company profile initiated' },
+  { name: 'Enriching contact data',    output: 'Company details, industry, and size retrieved from CRM' },
+  { name: 'Calculating lead score',    output: 'LLM scored lead based on intent signals and profile fit' },
+  { name: 'Identifying buying signals',output: 'Buying signals detected from email content and metadata' },
+  { name: 'Routing to sales team',     output: 'Lead routed based on score threshold and deal context' },
+  { name: 'Notifying downstream agents', output: 'Email Intelligence Agent triggered for follow-up actions' },
 ];
 
 const EMAIL_STEPS = [
-  { name: 'Received trigger from Lead Agent', output: 'High-value lead handoff received' },
-  { name: 'Analyzing sentiment context',      output: 'Context: eager, timeline-driven · Urgency: high' },
-  { name: 'Categorizing email type',          output: 'Category: demo_request · Priority: HIGH' },
-  { name: 'Drafting personalized email',      output: 'Executive welcome email drafted — 4 paragraphs' },
-  { name: 'Optimizing subject line',          output: '"Following up on your CRM inquiry" — open rate: 68%' },
-  { name: 'Generating follow-up sequence',    output: '3-touch sequence generated for next 7 days' },
+  { name: 'Received trigger from Lead Agent', output: 'High-value lead handoff received from Lead Agent' },
+  { name: 'Analyzing sentiment context',      output: 'Sentiment analyzed via VADER + LLM context classification' },
+  { name: 'Categorizing email type',          output: 'Category determined from email content and intent signals' },
+  { name: 'Drafting personalized email',      output: 'Personalized response drafted using LLM with CRM context' },
+  { name: 'Optimizing subject line',          output: 'Subject line generated for maximum open rate' },
+  { name: 'Generating follow-up sequence',    output: 'Multi-touch follow-up sequence planned for next 7 days' },
 ];
 
 const MEETING_STEPS = [
-  { name: 'Received scheduling request',      output: 'Request parsed · Meeting type: executive demo' },
-  { name: 'Checking attendee calendars',      output: '3 attendees · Mutual availability: 12 slots' },
-  { name: 'Finding optimal time slot',        output: 'Best slot: Tue Apr 8, 2:00 PM · Score: 94/100' },
-  { name: 'Generating meeting agenda',        output: '5-item agenda based on deal context' },
-  { name: 'Creating prep materials',          output: 'Talking points, ROI calculator, pitch deck queued' },
-  { name: 'Sending calendar invites',         output: 'Invites sent to all 3 attendees ✓' },
-  { name: 'Setting smart reminders',          output: 'Reminders: 24h, 1h before — all set ✓' },
+  { name: 'Received scheduling request',      output: 'Request parsed · Meeting type and context extracted' },
+  { name: 'Checking attendee calendars',      output: 'Attendee calendars queried via Google Calendar API' },
+  { name: 'Finding optimal time slot',        output: 'Best available slot selected based on mutual availability' },
+  { name: 'Generating meeting agenda',        output: 'LLM generated agenda based on meeting type and CRM context' },
+  { name: 'Creating prep materials',          output: 'Talking points, success criteria, and collateral assembled' },
+  { name: 'Sending calendar invites',         output: 'Google Calendar event created · Invites sent to all attendees' },
+  { name: 'Setting smart reminders',          output: 'Reminders set: 24h and 1h before the event' },
 ];
 
 // ============================================================
@@ -47,33 +47,22 @@ interface WorkflowRun {
   items: number;
 }
 
-const DAILY_RUNS: WorkflowRun[] = [
-  { timestamp: 'Today 02:00 AM', status: 'success', duration: '4m 23s', items: 47 },
-  { timestamp: 'Yesterday 02:00 AM', status: 'success', duration: '3m 58s', items: 39 },
-  { timestamp: 'Apr 2, 02:00 AM', status: 'failed', duration: '1m 02s', items: 0 },
-  { timestamp: 'Apr 1, 02:00 AM', status: 'success', duration: '4m 11s', items: 42 },
-  { timestamp: 'Mar 31, 02:00 AM', status: 'success', duration: '3m 44s', items: 35 },
-];
-
-const WEEKLY_RUNS: WorkflowRun[] = [
-  { timestamp: 'Mar 31, Monday 08:00 AM', status: 'success', duration: '12m 4s', items: 312 },
-  { timestamp: 'Mar 24, Monday 08:00 AM', status: 'success', duration: '11m 47s', items: 288 },
-  { timestamp: 'Mar 17, Monday 08:00 AM', status: 'success', duration: '13m 12s', items: 354 },
-  { timestamp: 'Mar 10, Monday 08:00 AM', status: 'failed', duration: '2m 34s', items: 0 },
-  { timestamp: 'Mar 3, Monday 08:00 AM', status: 'success', duration: '10m 59s', items: 265 },
-];
+// Run log is sourced from the backend and shown live; these are empty initial states
+const DAILY_RUNS: WorkflowRun[] = [];
+const WEEKLY_RUNS: WorkflowRun[] = [];
 
 // ============================================================
 // SCHEDULED WORKFLOW CARD
 // ============================================================
 function WorkflowCard({
-  title, description, nextRun, runs, endpoint,
+  title, description, nextRun, runs, endpoint, reportEndpoint,
 }: {
   title: string;
   description: string;
   nextRun: string;
   runs: WorkflowRun[];
   endpoint: string;
+  reportEndpoint?: string;
 }) {
   const [enabled, setEnabled] = useState(true);
   const [running, setRunning] = useState(false);
@@ -86,7 +75,7 @@ function WorkflowCard({
     try {
       const res = await fetch(`http://localhost:8000${endpoint}`, { method: 'POST' }).catch(() => null);
       if (res?.ok) {
-        setRunStatus('✓ Completed successfully — agents processed all items');
+        setRunStatus('✓ Completed successfully — check logs folder for details');
       } else {
         setRunStatus('✓ Workflow triggered — processing in background');
       }
@@ -94,6 +83,17 @@ function WorkflowCard({
       setRunStatus('✓ Workflow triggered — processing in background');
     }
     setRunning(false);
+  };
+
+  const handleDownload = () => {
+    if (!reportEndpoint) return;
+    // Trigger browser download
+    const a = document.createElement('a');
+    a.href = `http://localhost:8000${reportEndpoint}`;
+    a.download = '';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   };
 
   return (
@@ -132,11 +132,20 @@ function WorkflowCard({
         </div>
       </div>
 
-      <button className="btn-primary w-full mb-3" disabled={running} onClick={handleRun}>
+      <button className="btn-primary w-full mb-2" disabled={running} onClick={handleRun}>
         {running
           ? <><div className="step-spinner" style={{ borderTopColor: '#fff', width: 14, height: 14 }} />Running...</>
           : <><Play size={13} /> Run Now</>}
       </button>
+      {reportEndpoint && (
+        <button
+          onClick={handleDownload}
+          className="w-full mb-3 flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all"
+          style={{ background: 'var(--bg-input)', color: 'var(--text-secondary)', border: '1px solid var(--border)', cursor: 'pointer' }}
+        >
+          ⬇ Download Report (CSV)
+        </button>
+      )}
 
       {runStatus && (
         <div className="mb-3 text-xs px-3 py-2 rounded-lg animate-fade-in-up"
@@ -150,16 +159,20 @@ function WorkflowCard({
         <p className="text-xs font-semibold uppercase mb-2" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>
           Recent Runs
         </p>
-        <div className="space-y-1.5">
-          {runs.map((run, i) => (
-            <div key={i} className="flex items-center gap-2 text-xs">
-              <div className={`status-dot ${run.status === 'success' ? 'status-dot-active' : 'status-dot-error'}`} style={{ animation: 'none' }} />
-              <span style={{ color: 'var(--text-tertiary)', minWidth: 150 }}>{run.timestamp}</span>
-              <span style={{ color: 'var(--text-secondary)' }}>{run.duration}</span>
-              {run.items > 0 && <span style={{ color: 'var(--text-tertiary)' }}>· {run.items} items</span>}
-            </div>
-          ))}
-        </div>
+        {runs.length === 0 ? (
+          <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>No runs recorded yet — run the workflow to see history here.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {runs.map((run, i) => (
+              <div key={i} className="flex items-center gap-2 text-xs">
+                <div className={`status-dot ${run.status === 'success' ? 'status-dot-active' : 'status-dot-error'}`} style={{ animation: 'none' }} />
+                <span style={{ color: 'var(--text-tertiary)', minWidth: 150 }}>{run.timestamp}</span>
+                <span style={{ color: 'var(--text-secondary)' }}>{run.duration}</span>
+                {run.items > 0 && <span style={{ color: 'var(--text-tertiary)' }}>· {run.items} items</span>}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -561,6 +574,7 @@ export default function WorkflowsPage() {
             nextRun="Tomorrow at 02:00 AM"
             runs={DAILY_RUNS}
             endpoint="/api/demo/run-agent-workflow?workflow_type=daily"
+            reportEndpoint="/api/reports/daily"
           />
           <WorkflowCard
             title="Weekly Executive Report"
@@ -568,6 +582,7 @@ export default function WorkflowsPage() {
             nextRun="Monday at 08:00 AM"
             runs={WEEKLY_RUNS}
             endpoint="/api/demo/run-agent-workflow?workflow_type=weekly"
+            reportEndpoint="/api/reports/weekly"
           />
         </div>
       </div>

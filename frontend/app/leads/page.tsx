@@ -11,13 +11,13 @@ import type { LeadQualificationResult } from '@/types';
 const COLOR = '#0066cc';
 
 const STEPS = [
-  { name: 'Received lead data', output: 'Lead data parsed and validated successfully' },
-  { name: 'Extracting company domain', output: 'Domain extracted, company profile initiated' },
-  { name: 'Enriching contact data', output: 'Company: TechCorp Inc · Industry: SaaS · Size: 201-500' },
-  { name: 'Calculating lead score', output: 'Scoring complete — 87/100 · High-value prospect identified' },
-  { name: 'Identifying buying signals', output: '4 signals detected: demo request, pricing mention, urgency, executive' },
-  { name: 'Routing to sales team', output: 'Routed to Enterprise Sales · Priority: HIGH · SLA: 24h' },
-  { name: 'Notifying downstream agents', output: 'Email Intelligence Agent notified · Meeting Scheduler queued' },
+  { name: 'Received lead data', output: 'Lead data parsed and validated' },
+  { name: 'Extracting company domain', output: 'Domain extracted from email · Company profile initiated' },
+  { name: 'Enriching contact data', output: 'Company details and industry retrieved from CRM context' },
+  { name: 'Calculating lead score', output: 'LLM scored lead based on profile fit and intent signals' },
+  { name: 'Identifying buying signals', output: 'Buying signals detected from message content and metadata' },
+  { name: 'Routing to sales team', output: 'Lead routed based on score threshold and SLA requirements' },
+  { name: 'Notifying downstream agents', output: 'Email Intelligence Agent triggered · CRM entry created' },
 ];
 
 const EXAMPLES = [
@@ -75,18 +75,21 @@ export default function LeadsPage() {
   const handleRun = useCallback(async (formData: Record<string, string>) => {
     setError(null);
     setIsComplete(false);
-    try {
-      await fetch('http://localhost:8000/api/leads/workflow', {
+    const [liveResult] = await Promise.all([
+      fetch('http://localhost:8000/api/leads/workflow', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
-      }).catch(() => null); // fire & forget — we use mock result for frontend
-    } catch {
-      // ignore
-    }
-    // Use realistic mock result (since agent steps are revealed in the timeline)
-    await new Promise((r) => setTimeout(r, STEPS.length * 500 + 800));
-    const filled = { ...MOCK_RESULT, email: formData.email || MOCK_RESULT.email };
+      }).then(r => r.ok ? r.json() : null).catch(() => null),
+      new Promise((r) => setTimeout(r, STEPS.length * 500 + 800)),
+    ]);
+    // Map API response to display format; fallback to MOCK if API fails
+    const filled: LeadQualificationResult = liveResult ?? { ...MOCK_RESULT, email: formData.email || MOCK_RESULT.email };
+    // Ensure required fields exist
+    if (!filled.enriched_data) filled.enriched_data = MOCK_RESULT.enriched_data;
+    if (!filled.routing) filled.routing = MOCK_RESULT.routing;
+    if (!filled.signals) filled.signals = MOCK_RESULT.signals;
+    if (!filled.score_breakdown) filled.score_breakdown = MOCK_RESULT.score_breakdown;
     setResult(filled);
     setIsComplete(true);
   }, []);

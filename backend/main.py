@@ -7,6 +7,10 @@ from typing import List, Dict, Any
 from pydantic import BaseModel
 import uvicorn
 from dotenv import load_dotenv
+import logging
+import logging.handlers
+import os
+from pathlib import Path
 
 
 class QueryRequest(BaseModel):
@@ -14,6 +18,30 @@ class QueryRequest(BaseModel):
 
 # Load environment variables from .env file
 load_dotenv()
+
+# ── Rotating file logging setup ──────────────────────────────────────────────
+_LOG_DIR = Path(__file__).resolve().parent / "logs"
+_LOG_DIR.mkdir(exist_ok=True)
+_log_file = _LOG_DIR / "crm.log"
+
+_rotating_handler = logging.handlers.RotatingFileHandler(
+    _log_file, maxBytes=10 * 1024 * 1024, backupCount=7, encoding="utf-8"
+)
+_rotating_handler.setFormatter(logging.Formatter(
+    "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S"
+))
+_stream_handler = logging.StreamHandler()
+_stream_handler.setFormatter(logging.Formatter(
+    "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+    datefmt="%H:%M:%S"
+))
+logging.basicConfig(level=logging.INFO, handlers=[_rotating_handler, _stream_handler])
+logging.getLogger("uvicorn.access").handlers = [_rotating_handler, _stream_handler]
+logging.getLogger("uvicorn.error").handlers  = [_rotating_handler, _stream_handler]
+logger = logging.getLogger("crm")
+logger.info(f"CRM backend starting — logs → {_log_file}")
+# ─────────────────────────────────────────────────────────────────────────────
 
 from database.models import Base, Contact, Deal, Customer, Email, Meeting
 from database.connection import engine, get_db, init_db_tables
@@ -729,9 +757,11 @@ async def schedule_meeting_sync(req: ScheduleMeetingRequest, db: Session = Depen
         if best_slot and len(best_slot) > 10:
             # Parse ISO datetime from agent result
             start_dt = dt.fromisoformat(best_slot.replace("Z", "+00:00"))
+            # Convert to local time so Google Calendar shows correct local time
+            start_dt = start_dt.astimezone().replace(tzinfo=None)
         else:
-            # Fallback: next business day 10 AM UTC
-            start_dt = dt.now(timezone.utc) + timedelta(days=1)
+            # Fallback: next business day 10 AM in LOCAL time
+            start_dt = dt.now() + timedelta(days=1)
             while start_dt.weekday() >= 5:
                 start_dt += timedelta(days=1)
             start_dt = start_dt.replace(hour=10, minute=0, second=0, microsecond=0)
@@ -826,6 +856,93 @@ async def schedule_and_book_meeting(req: BookMeetingRequest, db: Session = Depen
         }
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Meeting booking failed: {e}")
+
+
+# ============================================================================
+# DOWNLOADABLE REPORTS
+# ============================================================================
+
+@app.get("/api/reports/daily")
+async def download_daily_report(db: Session = Depends(get_db)):
+    """Generate and download a CSV report of all CRM activity in the last 24 hours."""
+    from fastapi.responses import StreamingResponse
+    from datetime import datetime, timedelta
+    import csv, io
+    from database.models import Lead, Customer, Deal, Email as EmailModel
+
+    since = datetime.now() - timedelta(hours=24)
+    report_date = datetime.now().strftime("%Y-%m-%d")
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["AI CRM \u2014 Daily Monitoring Report", f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"])
+    writer.writerow([])
+    writer.writerow(["=== NEW LEADS (last 24h) ==="])
+    writer.writerow(["Name", "Email", "Company", "Score", "Status", "Created At"])
+    leads_today = db.query(Lead).filter(Lead.created_at >= since).all()
+    for l in leads_today:
+        writer.writerow([l.name, l.email, l.company or "", getattr(l, "score", ""), getattr(l, "status", ""), str(l.created_at)])
+    writer.writerow([f"Total: {len(leads_today)} leads"])
+    writer.writerow([])
+    writer.writerow(["=== EMAILS SYNCED (last 24h) ==="])
+    writer.writerow(["Subject", "From", "Date", "Sentiment", "Category"])
+    emails_today = db.query(EmailModel).filter(EmailModel.created_at >= since).all()
+    for e in emails_today:
+        meta = (getattr(e, "extra_metadata", None) or {})
+        writer.writerow([e.subject or "", e.sender or "", str(e.received_at or ""), meta.get("sentiment", ""), meta.get("category", "")])
+    writer.writerow([f"Total: {len(emails_today)} emails"])
+    output.seek(0)
+    logger.info(f"[Report] Daily report: {len(leads_today)} leads, {len(emails_today)} emails")
+    return StreamingResponse(iter([output.getvalue()]), media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=crm_daily_{report_date}.csv"})
+
+
+@app.get("/api/reports/weekly")
+async def download_weekly_report(db: Session = Depends(get_db)):
+    """Generate and download a CSV report of the last 7 days of CRM activity."""
+    from fastapi.responses import StreamingResponse
+    from datetime import datetime, timedelta
+    import csv, io
+    from database.models import Lead, Customer, Deal, Email as EmailModel
+
+    since = datetime.now() - timedelta(days=7)
+    report_date = datetime.now().strftime("%Y-%m-%d")
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["AI CRM \u2014 Weekly Pipeline & Intelligence Report", f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"])
+    writer.writerow([f"Period: {since.strftime('%Y-%m-%d')} to {datetime.now().strftime('%Y-%m-%d')}"])
+    writer.writerow([])
+    writer.writerow(["=== LEADS (last 7 days) ==="])
+    writer.writerow(["Name", "Email", "Company", "Score", "Status", "Created At"])
+    leads_week = db.query(Lead).filter(Lead.created_at >= since).all()
+    for l in leads_week:
+        writer.writerow([l.name, l.email, l.company or "", getattr(l, "score", ""), getattr(l, "status", ""), str(l.created_at)])
+    writer.writerow([f"Total: {len(leads_week)} | High-value: {sum(1 for l in leads_week if getattr(l,'score',0) and getattr(l,'score',0)>=70)}"])
+    writer.writerow([])
+    writer.writerow(["=== ACTIVE DEALS ==="])
+    writer.writerow(["Name", "Value", "Stage", "Created At"])
+    all_deals = db.query(Deal).all()
+    for d in all_deals:
+        writer.writerow([d.name, d.value or "", d.stage or "", str(d.created_at)])
+    writer.writerow([f"Pipeline value: ${sum((d.value or 0) for d in all_deals):,.0f}"])
+    writer.writerow([])
+    writer.writerow(["=== EMAIL INTELLIGENCE (last 7 days) ==="])
+    writer.writerow(["Subject", "From", "Sentiment", "Category", "Date"])
+    emails_week = db.query(EmailModel).filter(EmailModel.created_at >= since).all()
+    for e in emails_week:
+        meta = (getattr(e, "extra_metadata", None) or {})
+        writer.writerow([e.subject or "", e.sender or "", meta.get("sentiment", ""), meta.get("category", ""), str(e.received_at or "")])
+    writer.writerow([f"Total: {len(emails_week)} emails"])
+    writer.writerow([])
+    writer.writerow(["=== CUSTOMER HEALTH ==="])
+    writer.writerow(["Name", "Company", "Health Score", "Churn Risk", "Total Spend"])
+    all_customers = db.query(Customer).all()
+    for c in all_customers:
+        writer.writerow([c.name, c.company or "", c.health_score or "", c.churn_risk or "", c.total_spend or ""])
+    writer.writerow([f"At-risk: {sum(1 for c in all_customers if c.churn_risk in ['high','critical'])} of {len(all_customers)}"])
+    output.seek(0)
+    logger.info(f"[Report] Weekly report: {len(leads_week)} leads, {len(emails_week)} emails, {len(all_customers)} customers")
+    return StreamingResponse(iter([output.getvalue()]), media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=crm_weekly_{report_date}.csv"})
 
 
 # ============================================================================

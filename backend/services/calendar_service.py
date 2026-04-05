@@ -14,6 +14,35 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+# Detect local timezone IANA name for Google Calendar
+def _get_local_tz_name() -> str:
+    """Get the local machine's IANA timezone name (e.g. 'Asia/Kolkata')."""
+    try:
+        import tzlocal
+        return str(tzlocal.get_localzone())
+    except ImportError:
+        pass
+    try:
+        # Fallback: read /etc/timezone or Windows registry
+        import time as _time
+        offset_sec = -_time.timezone if not _time.daylight else -_time.altzone
+        offset_h = offset_sec / 3600
+        # Map common offsets to IANA names
+        _offset_map = {
+            5.5: "Asia/Kolkata",
+            5.75: "Asia/Kathmandu",
+            0.0: "UTC",
+            -5.5: "America/New_York",
+            -8.0: "America/Los_Angeles",
+            1.0: "Europe/London",
+            5.0: "Asia/Karachi",
+        }
+        return _offset_map.get(offset_h, "UTC")
+    except Exception:
+        return "UTC"
+
+_LOCAL_TZ_NAME: str = _get_local_tz_name()
+
 _BASE_DIR = Path(__file__).resolve().parent.parent          # D:\AI_CRM\backend
 _PROJECT_ROOT = _BASE_DIR.parent                            # D:\AI_CRM
 
@@ -145,11 +174,11 @@ def find_available_slots(
 
     Returns a list of {start, end, display} dicts.
     """
-    now = datetime.now(timezone.utc).replace(second=0, microsecond=0)
+    now = datetime.now()  # local machine time, no UTC conversion
     end_window = now + timedelta(days=days_ahead)
 
     # Get busy periods from Google Calendar
-    busy_map = get_freebusy(attendee_emails, now, end_window)
+    busy_map = get_freebusy(attendee_emails, now.astimezone(timezone.utc), end_window.astimezone(timezone.utc))
 
     # Flatten all busy periods across all attendees
     all_busy: List[Dict[str, str]] = []
@@ -172,6 +201,7 @@ def find_available_slots(
     if check < now:
         check += timedelta(days=1)
 
+    logger.info(f"[CalendarService] Finding slots in local TZ={_LOCAL_TZ_NAME} · Now={now.strftime('%Y-%m-%d %H:%M')} local")
     duration = timedelta(minutes=duration_minutes)
 
     while check < end_window and len(available) < max_slots:
@@ -244,11 +274,11 @@ def create_event(
             "location": location,
             "start": {
                 "dateTime": start_iso,
-                "timeZone": "UTC",
+                "timeZone": _LOCAL_TZ_NAME,
             },
             "end": {
                 "dateTime": end_iso,
-                "timeZone": "UTC",
+                "timeZone": _LOCAL_TZ_NAME,
             },
             "attendees": attendees,
             "reminders": {
