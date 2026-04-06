@@ -143,7 +143,119 @@ Return exactly this JSON:
 
         return sentiment, category, priority
 
+    async def execute_batch(self, emails_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Process multiple emails in ONE single LLM call.
+        Returns a list of analysis results.
+        """
+        if not emails_data:
+            return []
 
+        # 1. Run local VADER sentiment on all emails (No API cost/latency)
+        vader_results = {}
+        from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+        try:
+            _vader = SentimentIntensityAnalyzer()
+        except:
+            _vader = None
+
+        for ed in emails_data:
+            eid = str(ed.get("id"))
+            text = f"{ed.get('subject', '')}. {ed.get('body', '')}"
+            if _vader:
+                vs = _vader.polarity_scores(text)
+                c = vs["compound"]
+                score = max(1, min(10, round((c + 1) / 2 * 9 + 1)))
+                if c >= 0.35:
+                    lbl, emo = "positive", ("excitement" if c >= 0.6 else "happiness")
+                elif c <= -0.35:
+                    lbl, emo = "negative", ("anger" if c <= -0.6 else "frustration")
+                else:
+                    lbl, emo = "neutral", "neutral"
+                vader_results[eid] = {"score": score, "label": lbl, "emotion": emo}
+            else:
+                vader_results[eid] = {"score": 5, "label": "neutral", "emotion": "neutral"}
+
+        # 2. Build one massive prompt for the LLM
+        prompt_parts = [
+            "Analyze the following list of customer emails. For EACH email, provide exactly ONE JSON object in the output array.",
+            "IMPORTANT: A demo request or someone saying they are 'excited' is a POSITIVE 'sales_inquiry' or 'demo_request', NOT a complaint.",
+            "Categories allowed: support_request, sales_inquiry, demo_request, pricing_question, complaint, feature_request, general_inquiry",
+            "Priorities allowed: low, medium, high",
+            "Urgency allowed: low, medium, high\n",
+            "EMAILS TO ANALYZE:"
+        ]
+        
+        for i, ed in enumerate(emails_data):
+            prompt_parts.append(f"\n--- EMAIL ID: {ed.get('id')} ---")
+            prompt_parts.append(f"Subject: {ed.get('subject', '')}")
+            prompt_parts.append(f"Body: {ed.get('body', '')[:600]}") # Truncate to save tokens
+
+        prompt_parts.append("\nOUTPUT FORMAT:")
+        prompt_parts.append("""Return exactly a JSON array of objects. Example:
+[
+  {
+    "id": "email_id_here",
+    "category": "sales_inquiry",
+    "priority": "high",
+    "urgency": "medium",
+    "concerns": ["pricing"],
+    "follow_up_suggestions": ["Schedule a demo", "Send pricing sheet"],
+    "draft_response": "Hi there, thanks for reaching out! We'd love to..."
+  }
+]
+Return ONLY the JSON array, nothing else.""")
+
+        # 3. Call LLM Once
+        raw_response = await self.think("\n".join(prompt_parts), max_tokens=2048)
+
+        # 4. Parse Results
+        import json, re
+        parsed_array = []
+        try:
+            json_str = raw_response
+            match = re.search(r'\[.*\]', raw_response, re.DOTALL)
+            if match:
+                json_str = match.group()
+            parsed_array = json.loads(json_str)
+            if not isinstance(parsed_array, list):
+                parsed_array = [parsed_array]
+        except Exception as e:
+            print(f"[EmailIntelligence] Batch parse failed: {e}")
+            parsed_array = []
+
+        # 5. Merge VADER and LLM into final results list
+        results = []
+        parsed_dict = {str(item.get("id")): item for item in parsed_array if isinstance(item, dict) and item.get("id")}
+        
+        for ed in emails_data:
+            eid = str(ed.get("id"))
+            p_data = parsed_dict.get(eid, {})
+            v_data = vader_results.get(eid, {})
+            
+            sentiment = {
+                **v_data,
+                "urgency": p_data.get("urgency", "medium"),
+                "concerns": p_data.get("concerns", [])
+            }
+            category = p_data.get("category", "general_inquiry")
+            if category not in self.categories:
+                category = "general_inquiry"
+            priority = p_data.get("priority", "medium")
+            
+            res = {
+                "email_id": eid,
+                "sentiment": sentiment,
+                "category": category,
+                "priority": priority,
+                "draft_response": p_data.get("draft_response", "Thank you for your message. We will get back to you shortly."),
+                "follow_up_suggestions": p_data.get("follow_up_suggestions", ["Follow up in 24 hours"]),
+                "requires_human_review": priority == "high" or sentiment["score"] <= 3
+            }
+            results.append(res)
+            # We skip logging activity per email here to avoid spamming the log in batch
+
+        return results
 
     async def analyze_sentiment(self, email_data: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze sentiment of email content"""

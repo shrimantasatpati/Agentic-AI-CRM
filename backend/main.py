@@ -630,30 +630,49 @@ async def sync_gmail_emails(limit: int = 20, db: Session = Depends(get_db), back
                     emails_to_analyze = analyze_db.query(EmailModel).filter(
                         EmailModel.id.in_(ids_to_analyze)
                     ).all()
-                    for email_record in emails_to_analyze:
-                        try:
-                            print(f"[AUTO-ANALYZE] Running Email Intelligence Agent on: {email_record.subject}")
-                            agent_result = await orchestrator.email_agent.execute({
-                                "email_data": {
-                                    "from": email_record.from_email,
-                                    "subject": email_record.subject,
-                                    "body": email_record.body or "",
-                                    "id": email_record.id,
-                                }
-                            })
-                            metadata = dict(email_record.extra_metadata or {})
-                            metadata["agent_analyzed"] = True
-                            metadata["sentiment"]  = agent_result.get("sentiment")
-                            metadata["category"]   = agent_result.get("category")
-                            metadata["priority"]   = agent_result.get("priority")
-                            metadata["draft_response"]     = agent_result.get("draft_response")
-                            metadata["follow_up_suggestions"] = agent_result.get("follow_up_suggestions", [])
-                            email_record.extra_metadata = metadata
-                            analyze_db.add(email_record)
-                            analyze_db.commit()
-                            print(f"[AUTO-ANALYZE] ✅ Done: sentiment={agent_result.get('sentiment',{}).get('label')} · category={agent_result.get('category')} · priority={agent_result.get('priority')}")
-                        except Exception as e:
-                            print(f"[AUTO-ANALYZE] ⚠️  Failed for email {email_record.id}: {e}")
+                    
+                    if not emails_to_analyze:
+                        return
+
+                    print(f"[AUTO-ANALYZE] Running Email Intelligence Agent for {len(emails_to_analyze)} emails in ONE batch call...")
+                    
+                    # Prepare list of dicts for the agent
+                    batch_data = [
+                        {
+                            "from": e.from_email,
+                            "subject": e.subject,
+                            "body": e.body or "",
+                            "id": e.id,
+                        }
+                        for e in emails_to_analyze
+                    ]
+
+                    # Execute batch
+                    try:
+                        batch_results = await orchestrator.email_agent.execute_batch(batch_data)
+                        
+                        # Map results back to DB records
+                        results_map = {res["email_id"]: res for res in batch_results}
+                        
+                        for email_record in emails_to_analyze:
+                            str_id = str(email_record.id)
+                            if str_id in results_map:
+                                agent_result = results_map[str_id]
+                                metadata = dict(email_record.extra_metadata or {})
+                                metadata["agent_analyzed"] = True
+                                metadata["sentiment"]  = agent_result.get("sentiment")
+                                metadata["category"]   = agent_result.get("category")
+                                metadata["priority"]   = agent_result.get("priority")
+                                metadata["draft_response"]     = agent_result.get("draft_response")
+                                metadata["follow_up_suggestions"] = agent_result.get("follow_up_suggestions", [])
+                                email_record.extra_metadata = metadata
+                                analyze_db.add(email_record)
+                        
+                        analyze_db.commit()
+                        print(f"[AUTO-ANALYZE] ✅ Successfully analyzed {len(batch_results)} emails in batch.")
+                        
+                    except Exception as e:
+                        print(f"[AUTO-ANALYZE] ⚠️ Batch analysis failed: {e}")
                 finally:
                     analyze_db.close()
             background_tasks.add_task(_auto_analyze)
