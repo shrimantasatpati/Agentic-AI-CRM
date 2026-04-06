@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import Link from 'next/link';
-import { Check, ArrowRight } from 'lucide-react';
+import { Check, ArrowRight, Loader, Users, Target } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import AgentPageLayout from '@/components/AgentPageLayout';
 import ScoreGauge from '@/components/ScoreGauge';
@@ -73,14 +73,40 @@ export default function LeadsPage() {
   const [error, setError]       = useState<string | null>(null);
   const [emailToast, setEmailToast] = useState<string | null>(null);
 
+  // Leads list from CRM
+  const [leads, setLeads] = useState<any[]>([]);
+  const [leadsLoading, setLeadsLoading] = useState(true);
+  const [selectedLead, setSelectedLead] = useState<any | null>(null);
+
+  useEffect(() => {
+    fetch('http://localhost:8000/api/leads/')
+      .then(r => r.ok ? r.json() : [])
+      .then(data => {
+        setLeads(data);
+      })
+      .catch(() => {})
+      .finally(() => setLeadsLoading(false));
+  }, []);
+
   const handleRun = useCallback(async (formData: Record<string, string>) => {
     setError(null);
     setIsComplete(false);
+    
+    // If no explicit lead selected via UI, but formData exists (for cases where user manually types or first load)
+    const payload = selectedLead 
+      ? { email: selectedLead.email, first_name: selectedLead.first_name, last_name: selectedLead.last_name, company_name: selectedLead.company_name }
+      : formData;
+
+    if (!payload.email) {
+      setError("Please select a lead or provide an email.");
+      return;
+    }
+
     const [liveResult] = await Promise.all([
       fetch('http://localhost:8000/api/leads/workflow', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       }).then(r => r.ok ? r.json() : null).catch(() => null),
       new Promise((r) => setTimeout(r, STEPS.length * 500 + 800)),
     ]);
@@ -108,6 +134,73 @@ export default function LeadsPage() {
         value: v,
       }))
     : [];
+
+  const leadSelector = (
+    <div className="apple-card mb-4 overflow-hidden" style={{ padding: 0 }}>
+      <div className="px-4 py-3 border-b flex items-center justify-between" style={{ borderColor: 'var(--border-primary)' }}>
+        <div className="flex items-center gap-2">
+          <Users size={14} color={COLOR} />
+          <h3 className="font-700 text-sm" style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
+            Select Lead from CRM
+          </h3>
+        </div>
+        {!leadsLoading && <span className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest">{leads.length} leads</span>}
+      </div>
+      
+      {leadsLoading ? (
+        <div className="flex items-center gap-2 p-6 justify-center">
+          <Loader size={18} color={COLOR} className="animate-spin" />
+          <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>Scanning CRM…</span>
+        </div>
+      ) : leads.length === 0 ? (
+        <div className="p-8 text-center bg-[var(--bg-tertiary)]">
+          <p className="text-xs font-medium mb-3" style={{ color: 'var(--text-tertiary)' }}>No production leads found.</p>
+          <Link href="/sources">
+            <button className="btn-primary text-[10px] py-1 px-3">Go to Source Systems</button>
+          </Link>
+        </div>
+      ) : (
+        <div className="max-h-72 overflow-y-auto custom-scrollbar">
+          {leads.map(l => (
+            <button
+              key={l.id}
+              onClick={() => setSelectedLead(l)}
+              className="w-full text-left px-4 py-3 transition-colors border-b last:border-0 hover:bg-[var(--bg-tertiary)]"
+              style={{
+                borderColor: 'var(--border-secondary)',
+                background: selectedLead?.id === l.id ? `${COLOR}08` : 'transparent',
+              }}>
+              <div className="flex items-center gap-3">
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0`} 
+                     style={{ background: `${COLOR}15`, border: `1px solid ${COLOR}30` }}>
+                  <Target size={14} style={{ color: COLOR }} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <span className="text-[13px] font-700 truncate" style={{ color: 'var(--text-primary)', fontWeight: 700 }}>
+                      {l.first_name} {l.last_name}
+                    </span>
+                    {selectedLead?.id === l.id && <div className="w-1.5 h-1.5 rounded-full" style={{ background: COLOR }} />}
+                  </div>
+                  <div className="flex items-center gap-2 overflow-hidden">
+                    <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>{l.email}</span>
+                    <span className="text-[10px] text-[var(--text-tertiary)]">·</span>
+                    <span className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>{l.company_name || 'Individual'}</span>
+                  </div>
+                </div>
+                <div className="text-right flex-shrink-0">
+                   <div className="text-[11px] font-bold" style={{ color: l.lead_score >= 70 ? '#34c759' : l.lead_score >= 40 ? '#ff9500' : '#ff3b30' }}>
+                     {l.lead_score}%
+                   </div>
+                   <div className="text-[9px] text-[var(--text-tertiary)] font-bold uppercase">Fit</div>
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <>
@@ -149,6 +242,8 @@ export default function LeadsPage() {
       onRun={handleRun}
       error={error}
       isComplete={isComplete}
+      isReady={!!selectedLead}
+      headerExtra={leadSelector}
       resultNode={result && (
         <div className="space-y-4">
           {/* Score row */}

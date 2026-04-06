@@ -119,50 +119,63 @@ export default function Sidebar() {
 
       {/* Sidebar */}
       <nav className={`sidebar ${open ? 'open' : ''}`}>
-        {/* Header */}
-        <div className="p-4 border-b" style={{ borderColor: 'var(--border-primary)' }}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center text-white flex-shrink-0"
-                style={{ background: 'linear-gradient(135deg, #0066cc 0%, #5e5ce6 100%)', boxShadow: '0 4px 12px rgba(0,102,204,0.3)' }}
-              >
-                <Cpu size={20} color="#fff" />
-              </div>
-              <div className="flex flex-col leading-tight">
-                <span style={{ color: 'var(--text-primary)', fontWeight: 900, fontSize: 18, letterSpacing: '-0.5px' }}>
-                  AI CRM
-                </span>
-                <span style={{ color: 'var(--text-tertiary)', fontSize: 11, fontWeight: 600, marginTop: 1 }}>
-                  Agentic Intelligence
-                </span>
+        {/* Logo Section */}
+        <div className="p-8">
+          <Link href="/" className="group flex items-center gap-4 no-underline" onClick={() => setOpen(false)}>
+            <div className="relative">
+              <div className="absolute inset-0 bg-[var(--blue-primary)] blur-xl opacity-20 group-hover:opacity-40 transition-opacity" />
+              <div className="relative w-14 h-14 rounded-2xl bg-gradient-to-br from-[var(--blue-primary)] to-[#5e5ce6] flex items-center justify-center shadow-lg shadow-blue-500/20 transform group-hover:scale-105 transition-transform">
+                <span className="text-white font-900 text-3xl tracking-tighter" style={{ fontWeight: 900 }}>AI</span>
               </div>
             </div>
-            <button className="btn-ghost p-1 md:hidden" onClick={() => setOpen(false)}>
-              <X size={16} />
-            </button>
-          </div>
+            <div className="flex flex-col">
+              <span className="text-[var(--text-primary)] font-900 text-2xl tracking-tight leading-none mb-1.5" style={{ fontWeight: 900 }}>
+                CRM
+              </span>
+              <span className="text-[11px] text-[var(--text-tertiary)] font-700 tracking-[0.15em] uppercase opacity-80">
+                Agentic Intelligence
+              </span>
+            </div>
+          </Link>
         </div>
 
-        {/* Nav items */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-0.5">
-          {navItems.map((item) => {
-            const isActive = pathname === item.href;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={() => setOpen(false)}
-                className={`sidebar-nav-item ${isActive ? 'active' : ''}`}
-                style={isActive ? { color: item.color } : {}}
-              >
-                <span style={{ color: isActive ? item.color : 'var(--text-tertiary)' }}>
-                  {item.icon}
+        {/* Nav items Organized by Category */}
+        <div className="flex-1 overflow-y-auto p-3 space-y-6">
+          {['Navigation', 'Agents'].map(category => (
+            <div key={category} className="space-y-1">
+              <div className="px-3 mb-2 flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-tertiary)', opacity: 0.6 }}>
+                  {category}
                 </span>
-                {item.label}
-              </Link>
-            );
-          })}
+                <div className="h-[1px] flex-1 bg-gradient-to-r from-[var(--border-primary)] to-transparent ml-2" />
+              </div>
+              {navItems.filter(item => {
+                const isAgent = ['Lead Qualification', 'Email Intelligence', 'Sales Pipeline', 'Customer Success', 'Meeting Scheduler', 'Query Database'].includes(item.label);
+                return category === 'Agents' ? isAgent : !isAgent;
+              }).map((item) => {
+                const isActive = pathname === item.href;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => setOpen(false)}
+                    className={`sidebar-nav-item ${isActive ? 'active' : ''}`}
+                    style={isActive ? { borderLeft: `3px solid ${item.color}`, background: `${item.color}08` } : {}}
+                  >
+                    <span style={{ color: isActive ? item.color : 'var(--text-tertiary)', display: 'flex', alignItems: 'center' }}>
+                      {item.icon}
+                    </span>
+                    <span style={{ color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)', fontWeight: isActive ? 700 : 500 }}>
+                      {item.label}
+                    </span>
+                    {isActive && (
+                      <div className="ml-auto w-1 h-1 rounded-full" style={{ background: item.color, boxShadow: `0 0 10px ${item.color}` }} />
+                    )}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </div>
 
         {/* Footer */}

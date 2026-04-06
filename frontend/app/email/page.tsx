@@ -146,7 +146,7 @@ export default function EmailPage() {
           <span className="badge badge-blue ml-2">AI Batch Agent</span>
         </div>
         <p className="section-subtitle" style={{ fontSize: 12 }}>
-          Batched Analysis: 1 LLM call analyzes all fetched pending emails from CRM-matched domains.
+          Gmail — Connected · Sync fetches inbox → matches CRM companies/contacts → AI analyzes emails in BATCH
         </p>
       </div>
 
@@ -159,10 +159,13 @@ export default function EmailPage() {
       <div className="flex items-center gap-3 mb-3 flex-wrap flex-shrink-0">
         <div className="flex items-center gap-1.5">
           <label className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Show</label>
-          <select className="form-input" style={{ width: 64, padding: '4px 8px', fontSize: 12 }}
+          <select className="form-input transition-all hover:border-[var(--blue-primary)] focus:ring-2 focus:ring-[var(--blue-primary)]/20" 
+            style={{ width: 80, padding: '4px 10px', fontSize: 12, borderRadius: 8 }}
             value={limit}
             onChange={e => { const v = parseInt(e.target.value); setLimit(v); loadEmails(v); }}>
-            {[5, 10, 20].map(n => <option key={n}>{n}</option>)}
+            <option value={5}>5 Recs</option>
+            <option value={10}>10 Recs</option>
+            <option value={20}>20 Recs</option>
           </select>
         </div>
 

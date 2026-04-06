@@ -42,10 +42,28 @@ function fmt(iso: string): string {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
+function parseDate(iso: string | null): Date | null {
+  if (!iso) return null;
+  // If no timezone indicator or 'T', treat it as UTC from backend (common in SQLite/Python naive datetimes)
+  let normalized = iso;
+  if (!iso.includes('T')) {
+      normalized = iso.replace(' ', 'T');
+  }
+  if (!normalized.includes('Z') && !normalized.includes('+')) {
+      normalized += 'Z';
+  }
+  try {
+      const d = new Date(normalized);
+      return isNaN(d.getTime()) ? null : d;
+  } catch { return null; }
+}
+
 function fmtRelative(iso: string | null): string {
-  if (!iso) return 'Never';
-  const diff = Date.now() - new Date(iso).getTime();
+  const d = parseDate(iso);
+  if (!d) return 'Never';
+  const diff = Date.now() - d.getTime();
   const sec = Math.floor(diff / 1000);
+  if (sec < 5)         return `Just now`;
   if (sec < 60)        return `${sec}s ago`;
   if (sec < 3600)      return `${Math.floor(sec / 60)}m ago`;
   if (sec < 86400)     return `${Math.floor(sec / 3600)}h ago`;
@@ -187,7 +205,7 @@ export default function MissionControlPage() {
               icon={<Users size={20} />}
               color="#0066cc"
               subtitle={`${stats.leads.qualified} qualified`}
-              trend={{ value: 12, direction: 'up' }}
+              trend={stats.leads.trend}
               hoverDetails={[
                 { label: 'Total leads',  value: stats.leads.total.toLocaleString() },
                 { label: 'Qualified',    value: stats.leads.qualified.toLocaleString() },
@@ -200,7 +218,7 @@ export default function MissionControlPage() {
               icon={<DollarSign size={20} />}
               color="#34c759"
               subtitle={`${stats.deals.total} active deals`}
-              trend={{ value: 8, direction: 'up' }}
+              trend={stats.deals.trend}
               hoverDetails={[
                 { label: 'Total deals',    value: stats.deals.total.toLocaleString() },
                 { label: 'Pipeline value', value: fmtMoney(stats.deals.pipeline_value) },
@@ -212,7 +230,7 @@ export default function MissionControlPage() {
               value={stats.customers.total.toLocaleString()}
               icon={<Heart size={20} />}
               color="#ff9500"
-              trend={{ value: 3, direction: 'up' }}
+              trend={stats.customers.trend}
               hoverDetails={[
                 { label: 'Active customers', value: stats.customers.total.toLocaleString() },
                 { label: 'Avg MRR/customer', value: stats.customers.total > 0 ? fmtMoney(Math.round(stats.customers.mrr / stats.customers.total)) : '—' },
@@ -224,7 +242,7 @@ export default function MissionControlPage() {
               icon={<TrendingUp size={20} />}
               color="#bf5af2"
               subtitle={`ARR: ${fmtMoney(stats.customers.arr)}`}
-              trend={{ value: 5, direction: 'up' }}
+              trend={stats.customers.trend}
               hoverDetails={[
                 { label: 'MRR',   value: fmtMoney(stats.customers.mrr) },
                 { label: 'ARR',   value: fmtMoney(stats.customers.arr) },

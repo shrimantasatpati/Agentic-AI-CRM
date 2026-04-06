@@ -29,7 +29,8 @@ export default function SourceSystemsPage() {
       if (!res.ok) throw new Error(data.detail || 'Sync failed');
       setStatus({ type: 'success', message: `Successfully imported ${data.imported} records from Salesforce Simulation.` });
     } catch (e) {
-      setStatus({ type: 'error', message: (e as Error).message });
+      const msg = typeof e === 'string' ? e : (e as any).detail || (e as Error).message;
+      setStatus({ type: 'error', message: String(msg) });
     } finally {
       setLoading(false);
     }
@@ -53,7 +54,24 @@ export default function SourceSystemsPage() {
       if (!res.ok) throw new Error(data.detail || 'Upload failed');
       setStatus({ type: 'success', message: `Data Ingestion Complete: ${data.rows_processed} rows processed from ${file.name}.` });
     } catch (e) {
-      setStatus({ type: 'error', message: (e as Error).message });
+      const msg = typeof e === 'string' ? e : (e as any).detail || (e as Error).message;
+      setStatus({ type: 'error', message: String(msg) });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const runFullSeed = async () => {
+    setLoading(true);
+    setStatus(null);
+    try {
+      const res = await fetch('http://localhost:8000/api/sources/seed', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Seeding failed');
+      setStatus({ type: 'success', message: data.message });
+    } catch (e) {
+      const msg = typeof e === 'string' ? e : (e as any).detail || (e as Error).message;
+      setStatus({ type: 'error', message: String(msg) });
     } finally {
       setLoading(false);
     }
@@ -124,11 +142,23 @@ export default function SourceSystemsPage() {
             <span className="badge badge-gray">Internal</span>
           </div>
           <h3 className="text-lg font-bold mb-2">Custom REST API</h3>
-          <p className="text-sm text-[var(--text-secondary)] mb-6 leading-relaxed">
+          <p className="text-sm text-[var(--text-secondary)] mb-4 leading-relaxed">
             Programmatically push data into the AI CRM via secure authenticated endpoints.
           </p>
-          <div className="bg-[var(--bg-tertiary)] p-3 rounded-lg border border-[var(--border-primary)]">
-            <code className="text-[10px] text-[var(--text-primary)]">POST /api/sources/import/rest</code>
+          <div className="space-y-3">
+            <div className="bg-[var(--bg-tertiary)] p-3 rounded-lg border border-[var(--border-primary)]">
+              <code className="text-[10px] text-[var(--text-primary)]">POST /api/sources/import/rest</code>
+            </div>
+            <div className="space-y-1.5">
+               <label className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-tertiary)]">External Endpoint</label>
+               <input 
+                 type="text" 
+                 placeholder="https://api.your-system.com/crm/push"
+                 className="apple-input w-full text-xs py-2 px-3 bg-[var(--bg-tertiary)]"
+                 readOnly
+                 value="https://api.ai-crm.io/v1/ingest"
+               />
+            </div>
           </div>
         </div>
       </div>
@@ -143,9 +173,12 @@ export default function SourceSystemsPage() {
             </p>
           </div>
           <div className="flex gap-3">
-             {/* Note: I'll link to a trigger that runs seed logic (excluding emails) */}
-             <button className="flex items-center gap-2 px-6 py-3 rounded-xl font-bold bg-[var(--text-primary)] text-[var(--bg-primary)] transition-all hover:opacity-90">
-                Generate Full Dataset <ArrowRight size={18} />
+             <button 
+               onClick={runFullSeed}
+               disabled={loading}
+               className="flex items-center gap-2 px-6 py-3 rounded-xl font-bold bg-[var(--text-primary)] text-[var(--bg-primary)] transition-all hover:opacity-90 active:scale-95 disabled:opacity-50"
+             >
+                {loading ? <Loader size={18} className="animate-spin" /> : <>Generate Full Dataset <ArrowRight size={18} /></>}
              </button>
           </div>
         </div>

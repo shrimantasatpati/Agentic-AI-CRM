@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import Link from 'next/link';
-import { AlertTriangle, TrendingDown, Calendar, Check, Loader } from 'lucide-react';
+import { AlertTriangle, TrendingDown, Calendar, Check, Loader, DollarSign, Search } from 'lucide-react';
 import AgentPageLayout from '@/components/AgentPageLayout';
 import ScoreGauge from '@/components/ScoreGauge';
 import type { SalesPipelineResult } from '@/types';
@@ -110,47 +110,64 @@ export default function PipelinePage() {
   }, [handleRun]);
 
   const dealSelector = (
-    <div className="apple-card mb-4">
-      <h3 className="font-700 text-sm mb-3" style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
-        Select Deal from CRM
-      </h3>
+    <div className="apple-card mb-4 overflow-hidden" style={{ padding: 0 }}>
+      <div className="px-4 py-3 border-b flex items-center justify-between" style={{ borderColor: 'var(--border-primary)' }}>
+        <div className="flex items-center gap-2">
+          <DollarSign size={14} color={COLOR} />
+          <h3 className="font-700 text-sm" style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
+            Select Active Deal
+          </h3>
+        </div>
+        {!dealsLoading && <span className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest">{deals.length} found</span>}
+      </div>
+      
       {dealsLoading ? (
-        <div className="flex items-center gap-2 py-2">
-          <Loader size={14} color={COLOR} className="animate-spin" />
-          <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>Loading deals from CRM…</span>
+        <div className="flex items-center gap-2 p-6 justify-center">
+          <Loader size={18} color={COLOR} className="animate-spin" />
+          <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>Retrieving from CRM…</span>
         </div>
       ) : deals.length === 0 ? (
-        <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>No deals found in CRM database. Run the seed script.</p>
+        <div className="p-8 text-center bg-[var(--bg-tertiary)]">
+          <p className="text-xs font-medium mb-3" style={{ color: 'var(--text-tertiary)' }}>No production deals found.</p>
+          <Link href="/sources">
+            <button className="btn-primary text-[10px] py-1 px-3">Go to Source Systems</button>
+          </Link>
+        </div>
       ) : (
-        <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+        <div className="max-h-72 overflow-y-auto custom-scrollbar">
           {deals.map(d => (
             <button
               key={d.id}
               onClick={() => setSelectedDeal(d)}
-              className="w-full text-left px-3 py-2.5 rounded-xl transition-all"
+              className="w-full text-left px-4 py-3 transition-colors border-b last:border-0 hover:bg-[var(--bg-tertiary)]"
               style={{
-                background: selectedDeal?.id === d.id ? `${COLOR}15` : 'var(--bg-input)',
-                border: `1px solid ${selectedDeal?.id === d.id ? `${COLOR}40` : 'var(--border-secondary)'}`,
+                borderColor: 'var(--border-secondary)',
+                background: selectedDeal?.id === d.id ? `${COLOR}08` : 'transparent',
               }}>
-              <div className="flex items-center gap-2">
-                <span
-                  className="w-2 h-2 rounded-full flex-shrink-0"
-                  style={{ background: STAGE_COLOR[d.stage] || '#8e8e93' }} />
-                <span className="text-xs font-semibold truncate flex-1" style={{ color: 'var(--text-primary)' }}>
-                  {d.name}
-                </span>
-                {d.is_stalled && (
-                  <span className="badge badge-red text-xs flex-shrink-0">Stalled</span>
-                )}
-              </div>
-              <div className="flex gap-2 mt-1 ml-4">
-                <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{d.stage}</span>
-                <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
-                  ${(d.value ?? 0).toLocaleString()}
-                </span>
-                <span className="text-xs" style={{ color: d.health_score >= 70 ? '#34c759' : d.health_score >= 40 ? '#ff9500' : '#ff3b30' }}>
-                  Health {d.health_score}
-                </span>
+              <div className="flex items-center gap-3">
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0`} 
+                     style={{ background: `${STAGE_COLOR[d.stage]}15`, border: `1px solid ${STAGE_COLOR[d.stage]}30` }}>
+                  <DollarSign size={14} style={{ color: STAGE_COLOR[d.stage] }} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <span className="text-[13px] font-700 truncate" style={{ color: 'var(--text-primary)', fontWeight: 700 }}>
+                      {d.name}
+                    </span>
+                    {selectedDeal?.id === d.id && <div className="w-1.5 h-1.5 rounded-full" style={{ background: COLOR }} />}
+                  </div>
+                  <div className="flex items-center gap-2 overflow-hidden">
+                    <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: STAGE_COLOR[d.stage] }}>{d.stage.replace('_', ' ')}</span>
+                    <span className="text-[10px] text-[var(--text-tertiary)]">·</span>
+                    <span className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>${(d.value ?? 0).toLocaleString()}</span>
+                  </div>
+                </div>
+                <div className="text-right flex-shrink-0">
+                   <div className="text-[11px] font-bold" style={{ color: d.health_score >= 70 ? '#34c759' : d.health_score >= 40 ? '#ff9500' : '#ff3b30' }}>
+                     {d.health_score}%
+                   </div>
+                   <div className="text-[9px] text-[var(--text-tertiary)] font-bold uppercase">Health</div>
+                </div>
               </div>
             </button>
           ))}

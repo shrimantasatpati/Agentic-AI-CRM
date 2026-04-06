@@ -65,7 +65,9 @@ async def import_salesforce(payload: list, db: Session = Depends(get_db)):
         return {"status": "success", "imported": imported_count}
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Salesforce import failed: {e}")
+        # Ensure we return a string, not an object, to avoid [object Object] in frontend
+        error_msg = str(e)
+        raise HTTPException(status_code=500, detail=f"Salesforce import failed: {error_msg}")
 
 @router.post("/import/excel")
 async def import_excel(file: UploadFile = File(...), db: Session = Depends(get_db)):
@@ -113,3 +115,104 @@ async def get_source_status():
         "rest_api": {"status": "active", "endpoint": "/api/sources/import/rest"},
         "excel": {"status": "ready"}
     }
+
+@router.post("/seed")
+async def seed_production_data(db: Session = Depends(get_db)):
+    """Populate CRM with high-quality synthetic data (max 10 records per table).
+    Excludes emails and logs as requested.
+    """
+    try:
+        # 1. Clear existing data (optional, but requested for 'fresh' production feel)
+        # We only clear core entities to avoid breaking existing logs if they exist
+        db.query(Customer).delete()
+        db.query(Deal).delete()
+        db.query(Contact).delete()
+        db.query(Company).delete()
+        db.flush()
+
+        # 2. Seed Companies (10)
+        from .analytics import COMPANIES as SEED_COMPANIES # Reuse if possible or define locally
+        
+        # Local definition for robustness
+        COMPANIES_LIST = [
+            {"name": "Acme Corp", "domain": "acme.com", "industry": "Technology", "loc": "San Francisco"},
+            {"name": "Global Dynamics", "domain": "global-d.id", "industry": "Manufacturing", "loc": "Austin"},
+            {"name": "Stark Industries", "domain": "stark.com", "industry": "Aerospace", "loc": "New York"},
+            {"name": "Wayne Enterprises", "domain": "wayne.co", "industry": "Finance", "loc": "Gotham"},
+            {"name": "Cyberdyne Systems", "domain": "cyberdyne.ai", "industry": "AI/Robotics", "loc": "Los Angeles"},
+            {"name": "Oscorp", "domain": "oscorp.net", "industry": "Biotech", "loc": "New York"},
+            {"name": "Initech", "domain": "initech.com", "industry": "Software", "loc": "Houston"},
+            {"name": "Hooli", "domain": "hooli.com", "industry": "Search/Cloud", "loc": "Palo Alto"},
+            {"name": "Pied Piper", "domain": "piedpiper.io", "industry": "Data Compression", "loc": "Palo Alto"},
+            {"name": "Massive Dynamic", "domain": "massivedynamic.com", "industry": "Applied Science", "loc": "Boston"},
+        ]
+
+        companies = []
+        for c in COMPANIES_LIST:
+            comp = Company(
+                id=str(uuid.uuid4()),
+                name=c["name"],
+                domain=c["domain"],
+                industry=c["industry"],
+                location=c["loc"]
+            )
+            db.add(comp)
+            companies.append(comp)
+        db.flush()
+
+        # 3. Seed Contacts (1 per company)
+        names = [("Elon", "Musk"), ("Sheryl", "Sandberg"), ("Satya", "Nadella"), ("Sundar", "Pichai"), 
+                 ("Tim", "Cook"), ("Jensen", "Huang"), ("Lisa", "Su"), ("Marc", "Benioff"), 
+                 ("Jack", "Dorsey"), ("Parag", "Agrawal")]
+        
+        contacts = []
+        for i, comp in enumerate(companies):
+            first, last = names[i]
+            contact = Contact(
+                id=str(uuid.uuid4()),
+                company_id=comp.id,
+                first_name=first,
+                last_name=last,
+                email=f"{first.lower()}.{last.lower()}@{comp.domain}",
+                job_title=random.choice(["CEO", "CTO", "VP Engineering", "Head of Growth", "Director"]),
+                lead_source="Direct Inbound"
+            )
+            db.add(contact)
+            contacts.append(contact)
+        db.flush()
+
+        # 4. Seed Deals (1 per contact)
+        deals = []
+        stages = ["prospecting", "qualification", "proposal", "negotiation", "closed_won"]
+        for i, contact in enumerate(contacts):
+            deal = Deal(
+                id=str(uuid.uuid4()),
+                company_id=contact.company_id,
+                contact_id=contact.id,
+                name=f"Expansion Deal - {companies[i].name}",
+                value=random.choice([25000, 50000, 75000, 120000, 250000]),
+                stage=random.choice(stages),
+                probability=50,
+                health_score=random.randint(60, 95)
+            )
+            db.add(deal)
+            deals.append(deal)
+        db.flush()
+
+        # 5. Seed Customers (3 from the companies)
+        for i in range(3):
+            comp = companies[i]
+            db.add(Customer(
+                id=str(uuid.uuid4()),
+                company_id=comp.id,
+                plan=random.choice(["Enterprise", "Growth"]),
+                mrr=random.choice([5000, 10000, 15000]),
+                health_score=random.randint(70, 99),
+                churn_risk="low"
+            ))
+
+        db.commit()
+        return {"status": "success", "message": "Synthetic production data seeded successfully (10 Companies, 10 Contacts, 10 Deals, 3 Customers)."}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Seeding failed: {str(e)}")

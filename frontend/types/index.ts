@@ -4,9 +4,9 @@
 
 // ---- Dashboard & Analytics ----
 export interface DashboardStats {
-  leads: { total: number; qualified: number };
-  deals: { total: number; pipeline_value: number };
-  customers: { total: number; mrr: number; arr: number };
+  leads: { total: number; qualified: number; trend: { value: number; direction: 'up' | 'down' | 'neutral' } };
+  deals: { total: number; pipeline_value: number; trend: { value: number; direction: 'up' | 'down' | 'neutral' } };
+  customers: { total: number; mrr: number; arr: number; trend: { value: number; direction: 'up' | 'down' | 'neutral' } };
 }
 
 export interface PipelineStage {

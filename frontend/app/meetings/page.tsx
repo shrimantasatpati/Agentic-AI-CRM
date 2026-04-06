@@ -168,6 +168,27 @@ export default function MeetingsPage() {
   const [doneItems, setDoneItems]   = useState<Set<number>>(new Set());
   const [calBooked, setCalBooked]   = useState<{ success: boolean; event_link?: string; meeting_link?: string; error?: string } | null>(null);
 
+  // Contacts for attendee picker
+  const [contacts, setContacts] = useState<any[]>([]);
+  const [contactsLoading, setContactsLoading] = useState(true);
+  const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    fetch('http://localhost:8000/api/leads/')
+      .then(r => r.ok ? r.json() : [])
+      .then(data => setContacts(data))
+      .catch(() => {})
+      .finally(() => setContactsLoading(false));
+  }, []);
+
+  const toggleContact = (email: string) => {
+    setSelectedContacts(prev => {
+      const next = new Set(prev);
+      if (next.has(email)) next.delete(email); else next.add(email);
+      return next;
+    });
+  };
+
   const handleRun = useCallback(async (formData: Record<string, string>) => {
     setError(null);
     setIsComplete(false);
@@ -175,13 +196,17 @@ export default function MeetingsPage() {
     setCalBooked(null);
     setResult(null);
 
-    // Fire API call — WorkflowSteps animation runs concurrently and is self-timed.
-    // Minimum wait = max possible animation time (7 steps × 920ms max) so the cleanup
-    // in WorkflowSteps never fires before all steps visually complete.
+    // Force attendees from selection if any
+    const finalAttendees = selectedContacts.size > 0 
+      ? Array.from(selectedContacts).join(', ') 
+      : formData.attendees;
+
+    const payload = { ...formData, attendees: finalAttendees };
+
     const apiCallPromise = fetch('http://localhost:8000/api/agents/schedule-meeting/sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(formData),
+      body: JSON.stringify(payload),
     }).then(async (res) => {
       if (!res.ok) return null;
       return res.json();
@@ -283,7 +308,50 @@ export default function MeetingsPage() {
       onRun={handleRun}
       error={error}
       isComplete={isComplete}
-      headerExtra={<CalendarConnectBanner />}
+      headerExtra={
+        <>
+          <CalendarConnectBanner />
+          <div className="apple-card mb-4 min-h-[140px] overflow-hidden" style={{ padding: 0 }}>
+             <div className="px-4 py-3 border-b flex items-center justify-between" style={{ borderColor: 'var(--border-primary)' }}>
+               <div className="flex items-center gap-2">
+                 <Users size={14} color={COLOR} />
+                 <h3 className="font-700 text-sm" style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
+                   Select Business Contacts
+                 </h3>
+               </div>
+               {!contactsLoading && <span className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest">{selectedContacts.size} selected</span>}
+             </div>
+             {contactsLoading ? (
+               <div className="flex items-center gap-2 p-6 justify-center">
+                 <RefreshCw size={18} color={COLOR} className="animate-spin" />
+                 <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>Loading CRM contacts…</span>
+               </div>
+             ) : contacts.length === 0 ? (
+                <div className="p-8 text-center bg-[var(--bg-tertiary)]/50">
+                  <p className="text-xs font-medium" style={{ color: 'var(--text-tertiary)' }}>No contacts found in CRM.</p>
+                </div>
+             ) : (
+                <div className="grid grid-cols-2 gap-px bg-[var(--border-secondary)] border-b last:border-0" style={{ borderColor: 'var(--border-secondary)' }}>
+                  {contacts.map(c => (
+                    <button 
+                      key={c.id} 
+                      onClick={() => toggleContact(c.email)}
+                      className="text-left px-4 py-2.5 bg-[var(--bg-secondary)] hover:bg-[var(--bg-tertiary)] transition-colors flex items-center gap-2"
+                    >
+                      <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors ${selectedContacts.has(c.email) ? 'bg-purple-500 border-purple-500' : 'border-[var(--text-tertiary)]'}`}>
+                         {selectedContacts.has(c.email) && <Check size={8} color="#fff" />}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-bold truncate" style={{ color: 'var(--text-primary)' }}>{c.first_name} {c.last_name}</p>
+                        <p className="text-[10px] opacity-60 truncate" style={{ color: 'var(--text-tertiary)' }}>{c.email}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+             )}
+          </div>
+        </>
+      }
       resultNode={result && (
         <div className="space-y-4">
           {/* Google Calendar Booking Status */}

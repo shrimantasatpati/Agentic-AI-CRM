@@ -1,14 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { TrendingUp, TrendingDown } from 'lucide-react';
+import { TrendingUp, TrendingDown, Activity } from 'lucide-react';
 
 interface StatCardProps {
   label: string;
   value: string | number;
   icon: React.ReactNode;
   color: string;
-  trend?: { value: number; direction: 'up' | 'down' };
+  trend?: { value: number; direction: 'up' | 'down' | 'neutral' };
   subtitle?: string;
   // Optional hover detail rows — shown on hover
   hoverDetails?: Array<{ label: string; value: string }>;
@@ -44,12 +44,21 @@ export default function StatCard({ label, value, icon, color, trend, subtitle, h
           )}
           {trend && (
             <div className="flex items-center gap-1 mt-2">
-              {trend.direction === 'up'
-                ? <TrendingUp size={12} color="#34c759" />
-                : <TrendingDown size={12} color="#ff3b30" />}
+              {trend.direction === 'up' ? (
+                <TrendingUp size={12} color="#34c759" />
+              ) : trend.direction === 'down' ? (
+                <TrendingDown size={12} color="#ff3b30" />
+              ) : (
+                <Activity size={12} color="var(--text-tertiary)" />
+              )}
               <span className="text-xs font-semibold"
-                style={{ color: trend.direction === 'up' ? '#34c759' : '#ff3b30' }}>
-                {trend.value > 0 ? '+' : ''}{trend.value}%
+                style={{ 
+                  color: trend.direction === 'up' ? '#34c759' : 
+                         trend.direction === 'down' ? '#ff3b30' : 
+                         'var(--text-tertiary)' 
+                }}>
+                {trend.direction !== 'neutral' && (trend.value > 0 ? '+' : '')}
+                {trend.direction !== 'neutral' ? `${trend.value}%` : 'Stable'}
               </span>
               <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>vs last month</span>
             </div>

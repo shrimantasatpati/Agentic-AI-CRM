@@ -30,7 +30,8 @@ async def get_dashboard(db: Session = Depends(get_db)):
     leads_curr = db.query(Contact).filter(Contact.created_at >= last_30).count()
     leads_prev = db.query(Contact).filter(Contact.created_at >= prev_30, Contact.created_at < last_30).count()
     
-    # Revenue (Pipeline)
+    # Deals & Pipeline
+    total_deals = db.query(Deal).count()
     pipe_all = db.query(func.sum(Deal.value)).filter(
         Deal.stage.in_(['prospecting', 'qualification', 'proposal', 'negotiation'])
     ).scalar() or 0
