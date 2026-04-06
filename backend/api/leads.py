@@ -53,7 +53,19 @@ async def get_lead(lead_id: str, db: Session = Depends(get_db)):
 
 @router.post("/", response_model=LeadResponse)
 async def create_lead(lead: LeadCreate, db: Session = Depends(get_db)):
-    """Create new lead"""
+    """Create new lead — if email already exists, update the record (upsert)."""
+    # Check for existing contact with same email (avoids UNIQUE constraint error)
+    existing = db.query(Contact).filter(Contact.email == lead.email).first()
+    if existing:
+        # Update non-null fields only (upsert behaviour)
+        data = lead.model_dump(exclude_unset=True)
+        for field, value in data.items():
+            if value is not None and hasattr(existing, field):
+                setattr(existing, field, value)
+        db.commit()
+        db.refresh(existing)
+        return existing
+    # New contact — insert normally
     db_lead = Contact(**lead.model_dump())
     db.add(db_lead)
     db.commit()
