@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   LayoutDashboard, Target, Mail, BarChart2, Heart,
   Calendar, Database, Settings, Menu, X, Moon, Sun,
-  ChevronDown, Cpu, Check
+  ChevronDown, Cpu, Check, Cloud, Zap
 } from 'lucide-react';
 
 interface NavItem {
@@ -25,6 +25,7 @@ const navItems: NavItem[] = [
   { label: 'Meeting Scheduler',  href: '/meetings',  icon: <Calendar size={17} />,        color: '#bf5af2' },
   { label: 'Analytics',          href: '/analytics', icon: <BarChart2 size={17} />,       color: '#30b0c7' },
   { label: 'Query Database',     href: '/query',     icon: <Database size={17} />,        color: '#ff3b30' },
+  { label: 'Source Systems',     href: '/sources',   icon: <Cloud size={17} />,           color: '#5e5ce6' },
   { label: 'Workflows',          href: '/workflows', icon: <Settings size={17} />,        color: '#ff9500' },
 ];
 

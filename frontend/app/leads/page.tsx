@@ -130,6 +130,7 @@ export default function LeadsPage() {
         </div>
       )}
     <AgentPageLayout
+      agentId="LeadQualificationAgent"
       agentName="Lead Qualification"
       agentDescription="Scores, enriches, and routes incoming leads using AI-powered analysis and buying signal detection."
       agentColor={COLOR}

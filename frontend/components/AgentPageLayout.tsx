@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import WorkflowSteps from '@/components/WorkflowSteps';
 import ErrorBanner from '@/components/ErrorBanner';
 
@@ -46,16 +46,27 @@ interface AgentPageLayoutProps {
   isReady?: boolean;
   error?: string | null;
   onRetry?: () => void;
+  agentId?: string; // Backend name for dynamic examples (e.g. LeadQualificationAgent)
 }
 
 export default function AgentPageLayout({
   agentName, agentDescription, agentColor, agentEmoji,
   formFields, defaultValues, examples, steps,
-  onRun, resultNode, isComplete, error, onRetry, headerExtra, isReady,
+  onRun, resultNode, isComplete, error, onRetry, headerExtra, isReady, agentId
 }: AgentPageLayoutProps) {
   const [formData, setFormData] = useState<Record<string, string>>(defaultValues);
   const [running, setRunning]   = useState(false);
   const [totalMs, setTotalMs]   = useState<number | null>(null);
+  const [dynamicExamples, setDynamicExamples] = useState<ExampleInput[]>([]);
+
+  // Fetch real recent inputs to use as examples
+  useEffect(() => {
+    if (!agentId) return;
+    fetch(`http://localhost:8000/api/agents/recent-inputs/${agentId}`)
+      .then(res => res.ok ? res.json() : [])
+      .then(data => setDynamicExamples(data))
+      .catch(() => {});
+  }, [agentId]);
 
   // resolveAnimRef: holds the resolver that fires when animation finishes
   const resolveAnimRef = useRef<((ms: number) => void) | null>(null);
@@ -176,13 +187,16 @@ export default function AgentPageLayout({
                 Example Inputs
               </p>
               <div className="flex flex-wrap gap-2">
-                {examples.map((ex) => (
-                  <button
-                    key={ex.label}
-                    className="chip"
-                    onClick={() => applyExample(ex)}
-                  >
+                {/* Static Examples */}
+                {(examples || []).map((ex) => (
+                  <button key={ex.label} className="chip" onClick={() => applyExample(ex)}>
                     {ex.label}
+                  </button>
+                ))}
+                {/* Dynamic Examples */}
+                {dynamicExamples.map((ex, idx) => (
+                  <button key={`dyn-${idx}`} className="chip" style={{ borderColor: `${agentColor}40`, background: `${agentColor}08` }} onClick={() => applyExample(ex)}>
+                    <span className="opacity-60 mr-1 text-[10px]">Recent</span> {ex.label}
                   </button>
                 ))}
               </div>

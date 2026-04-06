@@ -162,7 +162,7 @@ export default function EmailPage() {
           <select className="form-input" style={{ width: 64, padding: '4px 8px', fontSize: 12 }}
             value={limit}
             onChange={e => { const v = parseInt(e.target.value); setLimit(v); loadEmails(v); }}>
-            {[10, 20, 30, 50].map(n => <option key={n}>{n}</option>)}
+            {[5, 10, 20].map(n => <option key={n}>{n}</option>)}
           </select>
         </div>
 

@@ -265,6 +265,7 @@ export default function MeetingsPage() {
 
   return (
     <AgentPageLayout
+      agentId="MeetingSchedulerAgent"
       agentName="Meeting Scheduler"
       agentDescription="Intelligently schedules meetings, generates agendas, assembles prep materials, and creates Google Calendar events."
       agentColor={COLOR}

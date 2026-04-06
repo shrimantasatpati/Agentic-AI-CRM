@@ -112,6 +112,8 @@ app.include_router(customers.router, prefix="/api/customers", tags=["Customers"]
 app.include_router(emails.router, prefix="/api/emails", tags=["Emails"])
 app.include_router(meetings.router, prefix="/api/meetings", tags=["Meetings"])
 app.include_router(analytics.router, prefix="/api/analytics", tags=["Analytics"])
+from api import sources
+app.include_router(sources.router, prefix="/api/sources", tags=["Sources"])
 
 
 # ============================================================================
@@ -390,6 +392,41 @@ async def form_webhook_tracked(
 # ============================================================================
 # LIVE AGENT ACTIVITY — real data from agent_logs table
 # ============================================================================
+
+@app.get("/api/agents/recent-inputs/{agent_name}")
+async def get_recent_inputs(agent_name: str, limit: int = 5, db: Session = Depends(get_db)):
+    """Fetch the most recent unique inputs for a specific agent to use as dynamic examples."""
+    from database.models import AgentLog
+    from sqlalchemy import desc
+    logs = (
+        db.query(AgentLog)
+        .filter(AgentLog.agent_name == agent_name)
+        .filter(AgentLog.activity_type.in_(['task_start', 'input_received', 'processing_start']))
+        .order_by(desc(AgentLog.created_at))
+        .limit(limit * 2) # Fetch extra for deduplication
+        .all()
+    )
+    
+    seen_details = []
+    unique_inputs = []
+    for log in logs:
+        # Simplified de-duplication based on JSON details
+        detail_json = json.dumps(log.details, sort_keys=True)
+        if detail_json not in seen_details:
+            seen_details.append(detail_json)
+            # Map back to the 'label' format used by examples
+            # We try to find a meaningful name or email to use as a label
+            label = "Recent Run"
+            if "name" in log.details: label = log.details["name"]
+            elif "company" in log.details: label = log.details["company"]
+            elif "email" in log.details: label = log.details["email"]
+            elif "id" in log.details: label = f"ID: {str(log.details['id'])[:8]}"
+            
+            unique_inputs.append({"label": f"🕒 {label}", "data": log.details})
+            if len(unique_inputs) >= limit: break
+            
+    return unique_inputs
+
 
 @app.get("/api/agents/events")
 async def get_agent_events(limit: int = 25, db: Session = Depends(get_db)):

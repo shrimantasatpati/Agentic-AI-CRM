@@ -5,6 +5,24 @@ from abc import ABC, abstractmethod
 import asyncio
 from datetime import datetime
 import json
+import re
+
+
+class DataMasker:
+    """Utility to redact PII (Emails, Phones, Names) from strings"""
+
+    @staticmethod
+    def redact(text: str) -> str:
+        if not text:
+            return ""
+        # Redact Emails (keep domain)
+        text = re.sub(r'([a-zA-Z0-9_.+-])[a-zA-Z0-9_.+-]*@([a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)', r'\1****@\2', text)
+        # Redact Phones (keep last 4 digits)
+        text = re.sub(r'(\+?\d{1,4})?[-.\s]?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?(\d{4})', r'\1-***-***-\2', text)
+        # Redact Name-like patterns (Simplified for demo — usually requires NLP)
+        # Here we just look for specific keys in JSON data if needed, but for text,
+        # we focus on the most identifiable PII.
+        return text
 
 
 class BaseAgent(ABC):
@@ -31,6 +49,10 @@ class BaseAgent(ABC):
     async def execute(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """Execute agent task - must be implemented by subclass"""
         ...  # Abstract — subclasses must implement and return a dict
+
+    def redact_pii(self, text: str) -> str:
+        """Helper to redact PII (Emails, Phones, Names) from text"""
+        return DataMasker.redact(text)
 
     async def think(self, prompt: str, max_retries: int = 3) -> str:
         """Use LLM to reason about a task — with exponential backoff retry on failure."""

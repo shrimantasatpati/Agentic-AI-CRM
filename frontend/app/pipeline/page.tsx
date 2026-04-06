@@ -161,6 +161,7 @@ export default function PipelinePage() {
 
   return (
     <AgentPageLayout
+      agentId="SalesPipelineAgent"
       agentName="Sales Pipeline"
       agentDescription="Analyzes deal health, predicts close probability, detects stall conditions, and generates actionable recommendations — using live CRM deal data."
       agentColor={COLOR}

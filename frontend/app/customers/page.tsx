@@ -158,6 +158,7 @@ export default function CustomersPage() {
 
   return (
     <AgentPageLayout
+      agentId="CustomerSuccessAgent"
       agentName="Customer Success"
       agentDescription="Monitors customer health from CRM data, detects churn risk, analyzes engagement metrics, and generates AI-powered retention recommendations."
       agentColor={COLOR}
