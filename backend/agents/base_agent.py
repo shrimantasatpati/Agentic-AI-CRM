@@ -32,9 +32,20 @@ class BaseAgent(ABC):
         """Execute agent task - must be implemented by subclass"""
         ...  # Abstract — subclasses must implement and return a dict
 
-    async def think(self, prompt: str) -> str:
-        """Use LLM to reason about a task"""
-        return await self.llm.generate(prompt)
+    async def think(self, prompt: str, max_retries: int = 3) -> str:
+        """Use LLM to reason about a task — with exponential backoff retry on failure."""
+        last_error: Exception | None = None
+        for attempt in range(max_retries):
+            try:
+                return await self.llm.generate(prompt)
+            except Exception as e:
+                last_error = e
+                if attempt < max_retries - 1:
+                    wait_seconds = 2 ** attempt   # 1s → 2s → 4s
+                    print(f"[{self.name}] LLM call failed (attempt {attempt + 1}/{max_retries}): {e} — retrying in {wait_seconds}s")
+                    await asyncio.sleep(wait_seconds)
+        print(f"[{self.name}] LLM call failed after {max_retries} attempts: {last_error}")
+        return f"[LLM unavailable after {max_retries} retries: {last_error}]"
 
     async def use_tool(self, tool_name: str, **kwargs: Any) -> Any:
         """Execute a tool from the agent's toolkit"""

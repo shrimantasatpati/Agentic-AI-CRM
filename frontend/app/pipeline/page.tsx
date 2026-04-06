@@ -61,8 +61,10 @@ export default function PipelinePage() {
     setIsComplete(false);
     setCheckedActions(new Set());
 
-    const res = await fetch(`http://localhost:8000/api/agents/analyze-deal/${selectedDeal.id}`, {
+    const res = await fetch(`http://localhost:8000/api/agents/analyze-deal/${selectedDeal.id}/sync`, {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
     }).then(r => r.ok ? r.json() : null).catch(() => null);
 
     if (res) {

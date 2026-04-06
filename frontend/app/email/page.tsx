@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Mail, RefreshCw, ChevronDown, ChevronUp, Loader, AlertTriangle, Check, Inbox } from 'lucide-react';
+import { Mail, RefreshCw, Loader, AlertTriangle, Check, Inbox, ChevronRight } from 'lucide-react';
 
 const COLOR = '#5e5ce6';
 
@@ -13,7 +13,7 @@ const SENTIMENT_COLOR: Record<string, string> = {
 };
 const CATEGORY_LABEL: Record<string, string> = {
   support_request: 'Support', sales_inquiry: 'Sales', demo_request: 'Demo',
-  pricing_question: 'Pricing', complaint: 'Complaint', feature_request: 'Feature Req.',
+  pricing_question: 'Pricing', complaint: 'Complaint', feature_request: 'Feature',
   general_inquiry: 'General',
 };
 
@@ -35,8 +35,8 @@ interface AnalyzedEmail {
   follow_up_suggestions: string[];
 }
 
-// ---- Gmail Connect Banner ----
-function GmailConnectBanner({ onSynced }: { onSynced: () => void }) {
+// ─── Gmail Banner ────────────────────────────────────────────────────────────
+function GmailBanner({ onSynced }: { onSynced: () => void }) {
   const [status, setStatus] = useState<'connected' | 'disconnected'>('disconnected');
   const [syncing, setSyncing] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -49,7 +49,7 @@ function GmailConnectBanner({ onSynced }: { onSynced: () => void }) {
         setStatus(data.authenticated ? 'connected' : 'disconnected');
         if (data.authenticated && pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
       }
-    } catch { /* backend offline */ }
+    } catch { /* offline */ }
   }, []);
 
   useEffect(() => {
@@ -62,69 +62,124 @@ function GmailConnectBanner({ onSynced }: { onSynced: () => void }) {
 
   const handleConnect = () => {
     const popup = window.open('about:blank', 'gmail_oauth', 'width=520,height=660,toolbar=0,scrollbars=1');
-    fetch('http://localhost:8000/api/auth/gmail')
-      .then(async (r) => {
-        if (!r.ok) { if (popup && !popup.closed) popup.close(); return; }
-        return r.json();
-      })
-      .then((data?: { auth_url?: string }) => {
-        if (!data?.auth_url) return;
-        if (popup && !popup.closed) popup.location.href = data.auth_url;
-        pollRef.current = setInterval(checkStatus, 2000);
-      })
-      .catch(() => { if (popup && !popup.closed) popup.close(); });
+    fetch('http://localhost:8000/api/auth/gmail').then(async r => {
+      if (!r.ok) { popup?.close(); return; }
+      const data = await r.json() as { auth_url?: string };
+      if (data?.auth_url && popup && !popup.closed) popup.location.href = data.auth_url;
+      pollRef.current = setInterval(checkStatus, 2000);
+    }).catch(() => popup?.close());
   };
 
   const handleSync = async (limit: number) => {
     setSyncing(true);
-    try {
-      await fetch(`http://localhost:8000/api/emails/sync?limit=${limit}`);
-      setTimeout(onSynced, 1500);   // wait 1.5s for background analysis to start
-    } catch { /* ignore */ }
-    finally { setSyncing(false); }
+    try { await fetch(`http://localhost:8000/api/emails/sync?limit=${limit}`); setTimeout(onSynced, 1500); }
+    catch { /* ignore */ } finally { setSyncing(false); }
   };
 
   const connected = status === 'connected';
   return (
-    <div className="flex items-center gap-3 p-3 rounded-xl mb-5" style={{
-      background: connected ? 'rgba(52,199,89,0.08)' : 'rgba(94,92,230,0.07)',
-      border: `1px solid ${connected ? 'rgba(52,199,89,0.3)' : 'rgba(94,92,230,0.25)'}`,
-    }}>
-      <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
-        style={{ background: connected ? 'rgba(52,199,89,0.15)' : 'rgba(94,92,230,0.15)' }}>
-        <Mail size={15} color={connected ? '#34c759' : COLOR} />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>Gmail</p>
-        <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
-          {connected ? 'Connected · Sync to fetch and analyze real inbox emails' : 'Connect Gmail to sync and analyze real emails'}
-        </p>
-      </div>
-      {connected ? (
-        <span className="badge badge-green text-xs flex-shrink-0">Active</span>
-      ) : (
-        <button onClick={handleConnect}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold flex-shrink-0"
-          style={{ background: COLOR, color: '#fff', cursor: 'pointer' }}>
-          <Mail size={11} /> Connect
-        </button>
-      )}
+    <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl mb-4"
+      style={{ background: connected ? 'rgba(52,199,89,0.07)' : 'rgba(94,92,230,0.07)', border: `1px solid ${connected ? 'rgba(52,199,89,0.25)' : 'rgba(94,92,230,0.2)'}` }}>
+      <Mail size={14} color={connected ? '#34c759' : COLOR} />
+      <p className="text-xs font-medium flex-1" style={{ color: 'var(--text-secondary)' }}>
+        Gmail {connected ? '— Connected · Sync to fetch emails from your CRM contacts & companies' : '— Connect to sync inbox emails'}
+      </p>
+      {connected
+        ? <span className="badge badge-green">Active</span>
+        : <button onClick={handleConnect} className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold"
+            style={{ background: COLOR, color: '#fff', border: 'none', cursor: 'pointer' }}>
+            <Mail size={11} /> Connect
+          </button>}
       {connected && (
-        <button onClick={() => handleSync(20)} disabled={syncing}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold flex-shrink-0"
-          style={{ background: syncing ? 'rgba(94,92,230,0.4)' : COLOR, color: '#fff', cursor: 'pointer', opacity: syncing ? 0.7 : 1 }}>
+        <button onClick={() => handleSync(30)} disabled={syncing}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold"
+          style={{ background: syncing ? 'rgba(94,92,230,0.4)' : COLOR, color: '#fff', border: 'none', cursor: 'pointer', opacity: syncing ? 0.7 : 1 }}>
           {syncing ? <Loader size={11} className="animate-spin" /> : <RefreshCw size={11} />}
-          {syncing ? 'Syncing...' : 'Sync Gmail'}
+          {syncing ? 'Syncing…' : 'Sync Gmail'}
         </button>
       )}
     </div>
   );
 }
 
-// ---- Single Email Card ----
-function EmailCard({ email }: { email: AnalyzedEmail }) {
-  const [expanded, setExpanded] = useState(false);
+// ─── Left column: single email row ──────────────────────────────────────────
+function EmailRow({ email, selected, onClick }: { email: AnalyzedEmail; selected: boolean; onClick: () => void }) {
+  const priorityColor = PRIORITY_COLOR[email.priority] || '#8e8e93';
+  const sentimentColor = SENTIMENT_COLOR[email.sentiment_label] || '#8e8e93';
+  const senderInitial = (email.from_email?.[0] || '?').toUpperCase();
+
+  return (
+    <button
+      onClick={onClick}
+      className="w-full text-left px-3 py-3 transition-all flex items-start gap-3 rounded-xl mb-1"
+      style={{
+        background: selected ? `${COLOR}12` : 'transparent',
+        border: `1px solid ${selected ? `${COLOR}35` : 'transparent'}`,
+      }}>
+      {/* Priority dot */}
+      <div className="w-1.5 h-1.5 rounded-full mt-2 flex-shrink-0"
+        style={{ background: email.analyzed ? priorityColor : '#8e8e93' }} />
+      {/* Avatar */}
+      <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
+        style={{ background: `${COLOR}20`, color: COLOR }}>
+        {senderInitial}
+      </div>
+      {/* Content */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5 mb-0.5">
+          <span className="text-xs font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
+            {email.from_email.split('<')[0].trim() || email.from_email}
+          </span>
+          {email.received_at && (
+            <span className="text-xs ml-auto flex-shrink-0" style={{ color: 'var(--text-tertiary)', fontSize: 10 }}>
+              {new Date(email.received_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </span>
+          )}
+        </div>
+        <p className="text-xs truncate mb-1" style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>
+          {email.subject}
+        </p>
+        {/* Tags */}
+        {email.analyzed && (
+          <div className="flex gap-1 flex-wrap">
+            <span className="badge text-xs" style={{ background: `${priorityColor}15`, color: priorityColor, fontSize: 9, padding: '1px 6px' }}>
+              {email.priority}
+            </span>
+            <span className="badge text-xs" style={{ background: `${sentimentColor}15`, color: sentimentColor, fontSize: 9, padding: '1px 6px' }}>
+              {email.sentiment_label}
+            </span>
+            <span className="badge text-xs" style={{ background: 'rgba(142,142,147,0.12)', color: 'var(--text-tertiary)', fontSize: 9, padding: '1px 6px' }}>
+              {CATEGORY_LABEL[email.category] || email.category}
+            </span>
+          </div>
+        )}
+        {!email.analyzed && (
+          <span className="badge text-xs" style={{ background: 'rgba(255,149,0,0.12)', color: '#ff9500', fontSize: 9, padding: '1px 6px' }}>
+            Pending AI
+          </span>
+        )}
+      </div>
+      {selected && <ChevronRight size={12} color={COLOR} className="flex-shrink-0 mt-1" />}
+    </button>
+  );
+}
+
+// ─── Right column: detail panel ──────────────────────────────────────────────
+function EmailDetailPanel({ email }: { email: AnalyzedEmail | null }) {
   const [copied, setCopied] = useState(false);
+
+  if (!email) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full" style={{ minHeight: 400 }}>
+        <Inbox size={44} color="var(--text-tertiary)" style={{ marginBottom: 12, opacity: 0.5 }} />
+        <p className="text-sm font-medium" style={{ color: 'var(--text-tertiary)' }}>Select an email to see AI analysis</p>
+        <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)', opacity: 0.6 }}>Sentiment · Category · Draft Response · Follow-ups</p>
+      </div>
+    );
+  }
+
+  const priorityColor = PRIORITY_COLOR[email.priority] || '#8e8e93';
+  const sentimentColor = SENTIMENT_COLOR[email.sentiment_label] || '#8e8e93';
 
   const copyDraft = () => {
     if (!email.draft_response) return;
@@ -133,135 +188,109 @@ function EmailCard({ email }: { email: AnalyzedEmail }) {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const priorityColor = PRIORITY_COLOR[email.priority] || '#8e8e93';
-  const sentimentColor = SENTIMENT_COLOR[email.sentiment_label] || '#8e8e93';
-
   return (
-    <div className="apple-card mb-3 transition-all" style={{ borderColor: !email.analyzed ? 'var(--border-primary)' : `${priorityColor}22` }}>
-      {/* Header row */}
-      <div className="flex items-start gap-3">
-        <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 text-xs font-bold"
-          style={{ background: `${COLOR}20`, color: COLOR }}>
-          {(email.from_email[0] || '?').toUpperCase()}
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-              {email.from_email}
-            </span>
-            {email.company && (
-              <span className="badge" style={{ background: 'rgba(94,92,230,0.12)', color: COLOR }}>
-                {email.company}
-              </span>
-            )}
+    <div className="h-full overflow-y-auto space-y-3 pr-1">
+      {/* Email header */}
+      <div className="apple-card" style={{ borderColor: `${priorityColor}25` }}>
+        <div className="flex items-start justify-between gap-2 mb-2">
+          <div className="flex-1 min-w-0">
+            <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>From</p>
+            <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{email.from_email}</p>
           </div>
-          <p className="text-xs mt-0.5 font-medium" style={{ color: 'var(--text-secondary)' }}>
-            {email.subject}
-          </p>
-          <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)', lineHeight: 1.4 }}>
-            {email.body_preview}{email.body_preview.length >= 200 ? '…' : ''}
-          </p>
+          {email.company && (
+            <span className="badge flex-shrink-0" style={{ background: `${COLOR}12`, color: COLOR }}>{email.company}</span>
+          )}
         </div>
-        <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
-          {email.received_at && (
-            <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
-              {new Date(email.received_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            </span>
-          )}
-          {email.analyzed ? (
-            <div className="flex gap-1.5 flex-wrap justify-end">
-              <span className="badge" style={{ background: `${priorityColor}18`, color: priorityColor }}>
-                {email.priority}
-              </span>
-              <span className="badge" style={{ background: `${sentimentColor}18`, color: sentimentColor }}>
-                {email.sentiment_label}
-              </span>
-              <span className="badge" style={{ background: 'rgba(142,142,147,0.12)', color: 'var(--text-secondary)' }}>
-                {CATEGORY_LABEL[email.category] || email.category}
-              </span>
-            </div>
-          ) : (
-            <span className="badge" style={{ background: 'rgba(255,149,0,0.12)', color: '#ff9500' }}>
-              Pending analysis
-            </span>
-          )}
+        <p className="text-xs mb-1" style={{ color: 'var(--text-tertiary)' }}>Subject</p>
+        <p className="text-sm font-medium mb-2" style={{ color: 'var(--text-primary)' }}>{email.subject}</p>
+        <div className="p-2 rounded-lg" style={{ background: 'var(--bg-tertiary)' }}>
+          <p className="text-xs" style={{ color: 'var(--text-secondary)', lineHeight: 1.5 }}>{email.body_preview}{email.body_preview?.length >= 200 ? '…' : ''}</p>
         </div>
       </div>
 
-      {/* Expand / collapse */}
-      {email.analyzed && (
+      {/* AI Analysis */}
+      {email.analyzed ? (
         <>
-          <button
-            onClick={() => setExpanded(!expanded)}
-            className="flex items-center gap-1 mt-3 text-xs font-medium"
-            style={{ color: COLOR, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-            {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-            {expanded ? 'Hide' : 'Show'} AI Analysis & Draft
-          </button>
+          {/* Sentiment + Category + Priority */}
+          <div className="apple-card">
+            <p className="text-xs font-semibold uppercase mb-2" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.07em' }}>AI Analysis</p>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              {[
+                { label: 'Priority', value: email.priority, color: priorityColor },
+                { label: 'Sentiment', value: email.sentiment_label, color: sentimentColor },
+                { label: 'Category', value: CATEGORY_LABEL[email.category] || email.category, color: COLOR },
+                { label: 'Urgency', value: email.sentiment_urgency, color: email.sentiment_urgency === 'high' ? '#ff3b30' : 'var(--text-secondary)' },
+              ].map(({ label, value, color }) => (
+                <div key={label} className="p-2 rounded-lg" style={{ background: 'var(--bg-tertiary)' }}>
+                  <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{label}</p>
+                  <p className="text-xs font-semibold capitalize" style={{ color }}>{value || '—'}</p>
+                </div>
+              ))}
+            </div>
+            {/* Sentiment score bar */}
+            <div>
+              <div className="flex justify-between mb-1">
+                <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Sentiment Score</span>
+                <span className="text-xs font-bold" style={{ color: sentimentColor }}>{email.sentiment_score}/10</span>
+              </div>
+              <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--bg-tertiary)' }}>
+                <div className="h-full rounded-full transition-all" style={{ width: `${(email.sentiment_score / 10) * 100}%`, background: sentimentColor }} />
+              </div>
+            </div>
+          </div>
 
-          {expanded && (
-            <div className="mt-3 space-y-3 animate-fade-in-up">
-              {/* Sentiment row */}
-              <div className="flex gap-3 flex-wrap">
-                {[
-                  { label: 'Score', value: `${email.sentiment_score}/10` },
-                  { label: 'Emotion', value: email.sentiment_emotion },
-                  { label: 'Urgency', value: email.sentiment_urgency },
-                ].map(({ label, value }) => (
-                  <div key={label} className="px-3 py-1.5 rounded-lg" style={{ background: 'var(--bg-tertiary)' }}>
-                    <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{label}</p>
-                    <p className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>{value}</p>
+          {/* AI Draft Response */}
+          {email.draft_response && (
+            <div className="apple-card" style={{ borderColor: `${COLOR}20` }}>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-semibold uppercase" style={{ color: COLOR, letterSpacing: '0.07em' }}>AI Draft Response</p>
+                <button onClick={copyDraft}
+                  className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs"
+                  style={{ background: `${COLOR}15`, color: COLOR, border: 'none', cursor: 'pointer' }}>
+                  {copied ? <Check size={10} /> : null}
+                  {copied ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+              <pre className="text-xs whitespace-pre-wrap" style={{ color: 'var(--text-secondary)', fontFamily: 'inherit', lineHeight: 1.65, maxHeight: 240, overflowY: 'auto' }}>
+                {email.draft_response}
+              </pre>
+            </div>
+          )}
+
+          {/* Follow-up suggestions */}
+          {email.follow_up_suggestions?.length > 0 && (
+            <div className="apple-card">
+              <p className="text-xs font-semibold uppercase mb-2" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.07em' }}>Follow-up Actions</p>
+              <div className="space-y-1.5">
+                {email.follow_up_suggestions.map((f, i) => (
+                  <div key={i} className="flex items-start gap-2 p-2 rounded-lg" style={{ background: 'var(--bg-tertiary)' }}>
+                    <span className="w-4 h-4 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold mt-0.5"
+                      style={{ background: `${COLOR}20`, color: COLOR, fontSize: 9 }}>{i + 1}</span>
+                    <p className="text-xs" style={{ color: 'var(--text-secondary)', lineHeight: 1.4 }}>{f}</p>
                   </div>
                 ))}
               </div>
-
-              {/* AI Draft */}
-              {email.draft_response && (
-                <div className="rounded-xl p-3" style={{ background: `${COLOR}08`, border: `1px solid ${COLOR}22` }}>
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-semibold" style={{ color: COLOR }}>AI Draft Response</p>
-                    <button onClick={copyDraft}
-                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs"
-                      style={{ background: `${COLOR}18`, color: COLOR, border: 'none', cursor: 'pointer' }}>
-                      {copied ? <Check size={11} /> : null}
-                      {copied ? 'Copied!' : 'Copy'}
-                    </button>
-                  </div>
-                  <pre className="text-xs whitespace-pre-wrap" style={{ color: 'var(--text-secondary)', fontFamily: 'inherit', lineHeight: 1.6 }}>
-                    {email.draft_response}
-                  </pre>
-                </div>
-              )}
-
-              {/* Follow-ups */}
-              {email.follow_up_suggestions?.length > 0 && (
-                <div>
-                  <p className="text-xs font-semibold mb-1.5" style={{ color: 'var(--text-secondary)' }}>Follow-up Actions</p>
-                  <div className="space-y-1">
-                    {email.follow_up_suggestions.map((f, i) => (
-                      <div key={i} className="flex items-start gap-2">
-                        <span className="w-4 h-4 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold mt-0.5"
-                          style={{ background: `${COLOR}20`, color: COLOR }}>{i + 1}</span>
-                        <p className="text-xs" style={{ color: 'var(--text-secondary)', lineHeight: 1.4 }}>{f}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
           )}
         </>
+      ) : (
+        <div className="apple-card flex flex-col items-center py-6 text-center" style={{ opacity: 0.7 }}>
+          <Loader size={20} color="#ff9500" className="animate-spin mb-2" />
+          <p className="text-xs font-medium" style={{ color: '#ff9500' }}>AI analysis pending</p>
+          <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>Sync Gmail again to trigger analysis</p>
+        </div>
       )}
     </div>
   );
 }
 
-// ---- Main Page ----
+// ─── Main Page ───────────────────────────────────────────────────────────────
 export default function EmailPage() {
   const [emails, setEmails] = useState<AnalyzedEmail[]>([]);
   const [loading, setLoading] = useState(false);
   const [fetchLimit, setFetchLimit] = useState(20);
   const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<AnalyzedEmail | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
   const loadEmails = useCallback(async (limit: number = fetchLimit) => {
@@ -273,128 +302,125 @@ export default function EmailPage() {
       const data = await res.json() as AnalyzedEmail[];
       setEmails(data);
       setLastRefresh(new Date());
+      // Auto-select first if nothing selected
+      if (!selected && data.length > 0) setSelected(data[0]);
     } catch (e) {
-      setError(`Failed to load emails: ${e}`);
-    } finally {
-      setLoading(false);
-    }
-  }, [fetchLimit]);
+      setError(`Failed to load: ${e}`);
+    } finally { setLoading(false); }
+  }, [fetchLimit, selected]);
 
-  useEffect(() => { loadEmails(); }, [loadEmails]);
+  useEffect(() => { loadEmails(); }, []);   // only on mount
 
   const analyzed   = emails.filter(e => e.analyzed);
   const unanalyzed = emails.filter(e => !e.analyzed);
   const highPri    = analyzed.filter(e => e.priority === 'high');
+  const other      = analyzed.filter(e => e.priority !== 'high');
 
   return (
-    <div>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Page header */}
-      <div className="mb-5">
+      <div className="mb-3">
         <div className="flex items-center gap-2 mb-0.5">
-          <span style={{ fontSize: 22 }}>📧</span>
-          <h1 className="section-title" style={{ fontSize: 22 }}>Email Intelligence</h1>
+          <span style={{ fontSize: 20 }}>📧</span>
+          <h1 className="section-title" style={{ fontSize: 20 }}>Email Intelligence</h1>
           <span className="badge badge-blue ml-2">AI Agent</span>
         </div>
-        <p className="section-subtitle">
-          Fetches real Gmail emails, runs AI analysis (VADER sentiment + LLM categorization), and drafts personalized responses — all stored in CRM.
+        <p className="section-subtitle" style={{ fontSize: 12 }}>
+          Fetches Gmail emails from CRM companies &amp; contacts · VADER sentiment + LLM categorization · AI draft responses
         </p>
       </div>
 
-      {/* Gmail connect + sync banner */}
-      <GmailConnectBanner onSynced={() => loadEmails()} />
+      {/* Gmail banner */}
+      <GmailBanner onSynced={() => loadEmails()} />
 
-      {/* Controls row */}
-      <div className="flex items-center gap-3 mb-4 flex-wrap">
+      {/* Controls */}
+      <div className="flex items-center gap-3 mb-3 flex-wrap">
         <div className="flex items-center gap-2">
-          <label className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>Show last</label>
-          <select
-            className="form-input"
-            style={{ width: 80, padding: '6px 10px', fontSize: 13 }}
+          <label className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Show last</label>
+          <select className="form-input" style={{ width: 72, padding: '5px 8px', fontSize: 12 }}
             value={fetchLimit}
-            onChange={(e) => { const v = parseInt(e.target.value); setFetchLimit(v); loadEmails(v); }}>
+            onChange={e => { const v = parseInt(e.target.value); setFetchLimit(v); loadEmails(v); }}>
             {[10, 20, 30, 50].map(n => <option key={n} value={n}>{n}</option>)}
           </select>
-          <label className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>emails</label>
+          <label className="text-xs" style={{ color: 'var(--text-tertiary)' }}>emails</label>
         </div>
-        <button
-          onClick={() => loadEmails()}
-          disabled={loading}
+        <button onClick={() => loadEmails()} disabled={loading}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold"
-          style={{ background: loading ? 'rgba(94,92,230,0.3)' : COLOR, color: '#fff', cursor: 'pointer', border: 'none' }}>
-          {loading ? <Loader size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-          {loading ? 'Loading...' : 'Refresh'}
+          style={{ background: loading ? 'rgba(94,92,230,0.3)' : COLOR, color: '#fff', border: 'none', cursor: 'pointer' }}>
+          {loading ? <Loader size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+          {loading ? 'Loading…' : 'Refresh'}
         </button>
-        {lastRefresh && (
-          <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
-            Last refreshed {lastRefresh.toLocaleTimeString()}
-          </span>
+        {lastRefresh && <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Updated {lastRefresh.toLocaleTimeString()}</span>}
+
+        {/* Stats inline */}
+        {emails.length > 0 && (
+          <div className="flex gap-2 ml-auto">
+            {[
+              { label: 'Total', v: emails.length, c: COLOR },
+              { label: 'Analyzed', v: analyzed.length, c: '#34c759' },
+              { label: 'High Pri', v: highPri.length, c: '#ff3b30' },
+              { label: 'Pending', v: unanalyzed.length, c: '#ff9500' },
+            ].map(({ label, v, c }) => (
+              <div key={label} className="text-center px-2">
+                <p className="text-base font-bold" style={{ color: c, lineHeight: 1 }}>{v}</p>
+                <p style={{ fontSize: 9, color: 'var(--text-tertiary)' }}>{label}</p>
+              </div>
+            ))}
+          </div>
         )}
       </div>
 
-      {/* Stats row */}
-      {emails.length > 0 && (
-        <div className="flex gap-3 mb-4 flex-wrap">
-          {[
-            { label: 'Total in CRM', value: emails.length, color: COLOR },
-            { label: 'AI Analyzed', value: analyzed.length, color: '#34c759' },
-            { label: 'High Priority', value: highPri.length, color: '#ff3b30' },
-            { label: 'Pending', value: unanalyzed.length, color: '#ff9500' },
-          ].map(({ label, value, color }) => (
-            <div key={label} className="apple-card flex-1 min-w-0 py-2 px-3" style={{ borderColor: `${color}22` }}>
-              <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{label}</p>
-              <p className="text-xl font-bold" style={{ color }}>{value}</p>
-            </div>
-          ))}
-        </div>
-      )}
-
       {/* Error */}
       {error && (
-        <div className="flex items-center gap-2 p-3 rounded-xl mb-4"
-          style={{ background: 'rgba(255,59,48,0.08)', border: '1px solid rgba(255,59,48,0.3)' }}>
-          <AlertTriangle size={14} color="#ff3b30" />
+        <div className="flex items-center gap-2 p-2 rounded-lg mb-3"
+          style={{ background: 'rgba(255,59,48,0.08)', border: '1px solid rgba(255,59,48,0.25)' }}>
+          <AlertTriangle size={13} color="#ff3b30" />
           <p className="text-xs" style={{ color: '#ff3b30' }}>{error}</p>
         </div>
       )}
 
-      {/* Email list */}
+      {/* Split layout: LEFT list | RIGHT detail */}
       {loading && emails.length === 0 ? (
-        <div className="apple-card flex flex-col items-center justify-center" style={{ minHeight: 200 }}>
-          <Loader size={28} color={COLOR} className="animate-spin mb-3" />
+        <div className="apple-card flex flex-col items-center justify-center flex-1" style={{ minHeight: 300 }}>
+          <Loader size={24} color={COLOR} className="animate-spin mb-2" />
           <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Loading emails from CRM…</p>
         </div>
       ) : emails.length === 0 ? (
-        <div className="apple-card flex flex-col items-center justify-center" style={{ minHeight: 240, opacity: 0.7 }}>
+        <div className="apple-card flex flex-col items-center justify-center flex-1" style={{ minHeight: 300, opacity: 0.7 }}>
           <Inbox size={40} color="var(--text-tertiary)" style={{ marginBottom: 12 }} />
           <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>No emails in CRM yet</p>
-          <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>
-            Connect Gmail and click "Sync Gmail" to fetch and analyze your inbox
-          </p>
+          <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>Connect Gmail and click Sync Gmail to fetch &amp; analyze your inbox</p>
         </div>
       ) : (
-        <div>
-          {highPri.length > 0 && (
-            <p className="text-xs font-semibold mb-2 uppercase" style={{ color: '#ff3b30', letterSpacing: '0.08em' }}>
-              🔴 High Priority ({highPri.length})
-            </p>
-          )}
-          {highPri.map(e => <EmailCard key={e.id} email={e} />)}
-
-          {analyzed.filter(e => e.priority !== 'high').length > 0 && (
-            <p className="text-xs font-semibold mb-2 mt-4 uppercase" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.08em' }}>
-              Other Analyzed ({analyzed.filter(e => e.priority !== 'high').length})
-            </p>
-          )}
-          {analyzed.filter(e => e.priority !== 'high').map(e => <EmailCard key={e.id} email={e} />)}
-
-          {unanalyzed.length > 0 && (
-            <>
-              <p className="text-xs font-semibold mb-2 mt-4 uppercase" style={{ color: '#ff9500', letterSpacing: '0.08em' }}>
-                ⏳ Pending AI Analysis ({unanalyzed.length})
+        <div style={{ display: 'flex', gap: 16, flex: 1, minHeight: 0, overflow: 'hidden' }}>
+          {/* LEFT — email list */}
+          <div style={{ width: 340, flexShrink: 0, overflowY: 'auto', borderRight: '1px solid var(--border-primary)', paddingRight: 12 }}>
+            {highPri.length > 0 && (
+              <p className="text-xs font-semibold mb-1.5 uppercase" style={{ color: '#ff3b30', letterSpacing: '0.08em', fontSize: 9 }}>
+                🔴 HIGH PRIORITY ({highPri.length})
               </p>
-              {unanalyzed.map(e => <EmailCard key={e.id} email={e} />)}
-            </>
-          )}
+            )}
+            {highPri.map(e => <EmailRow key={e.id} email={e} selected={selected?.id === e.id} onClick={() => setSelected(e)} />)}
+
+            {other.length > 0 && (
+              <p className="text-xs font-semibold mt-3 mb-1.5 uppercase" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.08em', fontSize: 9 }}>
+                ANALYZED ({other.length})
+              </p>
+            )}
+            {other.map(e => <EmailRow key={e.id} email={e} selected={selected?.id === e.id} onClick={() => setSelected(e)} />)}
+
+            {unanalyzed.length > 0 && (
+              <p className="text-xs font-semibold mt-3 mb-1.5 uppercase" style={{ color: '#ff9500', letterSpacing: '0.08em', fontSize: 9 }}>
+                ⏳ PENDING ({unanalyzed.length})
+              </p>
+            )}
+            {unanalyzed.map(e => <EmailRow key={e.id} email={e} selected={selected?.id === e.id} onClick={() => setSelected(e)} />)}
+          </div>
+
+          {/* RIGHT — detail panel */}
+          <div style={{ flex: 1, overflowY: 'auto' }}>
+            <EmailDetailPanel email={selected} />
+          </div>
         </div>
       )}
     </div>

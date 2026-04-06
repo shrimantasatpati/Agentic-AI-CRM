@@ -60,8 +60,10 @@ export default function CustomersPage() {
     setError(null);
     setIsComplete(false);
 
-    const res = await fetch(`http://localhost:8000/api/agents/monitor-customer/${selectedCustomer.id}`, {
+    const res = await fetch(`http://localhost:8000/api/agents/monitor-customer/${selectedCustomer.id}/sync`, {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
     }).then(r => r.ok ? r.json() : null).catch(() => null);
 
     if (res) {
@@ -72,7 +74,7 @@ export default function CustomersPage() {
         company_name: selectedCustomer.company_name,
         health_score: healthScore,
         churn_risk: {
-          level: churnLevel,
+          level: (churnLevel as 'low' | 'medium' | 'high' | 'critical'),
           probability: res.churn_risk?.probability ?? Math.max(0, 100 - healthScore),
           factors: res.churn_risk?.factors ?? [],
         },
@@ -91,7 +93,7 @@ export default function CustomersPage() {
         company_name: selectedCustomer.company_name,
         health_score: selectedCustomer.health_score,
         churn_risk: {
-          level: selectedCustomer.churn_risk,
+          level: (selectedCustomer.churn_risk as 'low' | 'medium' | 'high' | 'critical'),
           probability: Math.max(0, 100 - selectedCustomer.health_score),
           factors: [],
         },

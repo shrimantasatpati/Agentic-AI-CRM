@@ -559,11 +559,38 @@ async def sync_gmail_emails(limit: int = 20, db: Session = Depends(get_db), back
         print(f"{'='*60}")
         saved_count = 0
         newly_saved_ids = []
+
+        # ── Build CRM allow-list once before the loop ─────────────────────────
+        from database.models import Company, Contact as ContactModel
+        crm_domains  = {c.domain.lower().lstrip("www.") for c in db.query(Company).all() if c.domain}
+        crm_emails   = {c.email.lower() for c in db.query(ContactModel).all() if c.email}
+        # ──────────────────────────────────────────────────────────────────────
+
         for ge in gmail_emails:
             sender  = ge.get("from", "unknown")
             subject = ge.get("subject", "(no subject)")
             print(f"  📧 From: {sender}")
             print(f"     Subject: {subject}")
+
+            # ── CRM relevance filter ────────────────────────────────────────
+            raw_email = ge.get("from", "").lower()
+            # Extract bare email address from "Name <email>" format
+            import re as _re
+            m = _re.search(r'<([^>]+)>', raw_email)
+            bare_email = m.group(1) if m else raw_email.strip()
+            sender_domain = bare_email.split("@")[-1] if "@" in bare_email else ""
+
+            is_crm_contact = bare_email in crm_emails
+            is_crm_company = any(sender_domain == d or sender_domain.endswith("." + d) for d in crm_domains)
+
+            if not (is_crm_contact or is_crm_company):
+                print(f"     ⏭  Skipped — sender domain '{sender_domain}' not in CRM companies/contacts")
+                continue
+            else:
+                tag = "known contact" if is_crm_contact else f"company domain match ({sender_domain})"
+                print(f"     ✅ CRM relevance confirmed — {tag}")
+            # ────────────────────────────────────────────────────────────────
+
             existing = db.query(EmailModel).filter(
                 EmailModel.from_email == ge.get("from", ""),
                 EmailModel.subject == ge.get("subject", "")
