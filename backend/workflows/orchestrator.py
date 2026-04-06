@@ -160,9 +160,13 @@ class AgentOrchestrator:
     def __init__(self):
         self.llm = self._init_llm()
 
-        self.lead_agent    = LeadQualificationAgent(llm=self.llm)
+        # ── Web Search Tool — used by LeadQualificationAgent + SalesPipelineAgent ──
+        from services.web_search_tool import WebSearchTool
+        _web_search = WebSearchTool()
+
+        self.lead_agent    = LeadQualificationAgent(llm=self.llm, tools=[_web_search])
         self.email_agent   = EmailIntelligenceAgent(llm=self.llm)
-        self.sales_agent   = SalesPipelineAgent(llm=self.llm)
+        self.sales_agent   = SalesPipelineAgent(llm=self.llm, tools=[_web_search])
         self.success_agent = CustomerSuccessAgent(llm=self.llm)
         self.meeting_agent = MeetingSchedulerAgent(llm=self.llm)
         self.analytics_agent = AnalyticsAgent(llm=self.llm)

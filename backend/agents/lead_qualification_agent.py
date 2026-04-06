@@ -55,8 +55,26 @@ class LeadQualificationAgent(BaseAgent):
                     "lead_status": existing_contact.lead_status
                 })
 
+        # Step 2: Web enrichment via use_tool() — search for company context
+        domain = lead_data.get("email", "").split("@")[-1] if "@" in lead_data.get("email", "") else ""
+        company_name = lead_data.get("company", lead_data.get("company_name", domain))
+        web_context = {}
+        if company_name or domain:
+            try:
+                web_context = await self.use_tool(
+                    "web_search",
+                    company=company_name or domain,
+                    query=f"{company_name or domain} company technology CRM"
+                )
+                await self.log_activity("web_enrichment", {
+                    "query": company_name or domain,
+                    "found": bool(web_context.get("summary"))
+                })
+            except Exception as _e:
+                pass   # Never block lead qualification due to search failure
+
         # OPTIMIZED: Single LLM call returns enrichment + score + signals together
-        enriched_data, score, signals = await self._qualify_lead_single_call(lead_data)
+        enriched_data, score, signals = await self._qualify_lead_single_call(lead_data, web_context)
 
         # Step 4: Route to appropriate team (rule-based — no LLM needed)
         routing = await self.route_lead(score, signals)
@@ -91,10 +109,19 @@ class LeadQualificationAgent(BaseAgent):
 
         return result
 
-    async def _qualify_lead_single_call(self, lead_data: Dict[str, Any]):
+    async def _qualify_lead_single_call(self, lead_data: Dict[str, Any], web_context: Dict[str, Any] = {}):
         """Single optimized LLM call: enrichment + score + signals in one structured JSON response"""
         email = lead_data.get("email", "")
         domain = email.split("@")[-1] if "@" in email else ""
+
+        # Build web context section for the prompt (from use_tool result)
+        web_summary = web_context.get("summary", "") if web_context else ""
+        web_topics  = web_context.get("related_topics", []) if web_context else []
+        web_section = ""
+        if web_summary and "[LLM" not in web_summary and "unavailable" not in web_summary:
+            web_section = f"\nWeb Research Context (from live search):\n{web_summary}"
+            if web_topics:
+                web_section += f"\nRelated: {'; '.join(web_topics[:3])}"
 
         combined_prompt = f"""Analyze this lead and return a single JSON object with exactly these fields:
 
@@ -103,6 +130,7 @@ Email: {email}
 Name: {lead_data.get('name', lead_data.get('first_name', 'Unknown'))}
 Company Domain: {domain}
 Job Title: {lead_data.get('job_title', 'Unknown')}
+{web_section}
 
 Return ONLY valid JSON in this exact format:
 {{
@@ -115,7 +143,8 @@ Return ONLY valid JSON in this exact format:
 }}
 
 Scoring guide: Enterprise+Executive+Tech = 80-100, Mid-market = 50-79, SMB = 30-49, Low-value = 0-29.
-Signals: identify any buying intent indicators from the email domain and job title."""
+Use the web research context to improve accuracy if available.
+Signals: identify buying intent indicators from email domain, job title, and web context."""
 
         raw = await self.think(combined_prompt)
 
