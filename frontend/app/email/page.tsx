@@ -1,85 +1,44 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Copy, Check, AlertTriangle, Mail, RefreshCw, Loader } from 'lucide-react';
-import AgentPageLayout from '@/components/AgentPageLayout';
-import type { EmailIntelligenceResult } from '@/types';
-
+import { Mail, RefreshCw, ChevronDown, ChevronUp, Loader, AlertTriangle, Check, Inbox } from 'lucide-react';
 
 const COLOR = '#5e5ce6';
 
-const STEPS = [
-  { name: 'Received email', output: 'Email subject, sender, body, and headers extracted by agent' },
-  { name: 'Analyzing sentiment', output: 'VADER scored tone · LLM classified emotion and urgency level' },
-  { name: 'Categorizing email type', output: 'Email type determined: complaint, inquiry, demo request, or other' },
-  { name: 'Determining priority', output: 'Priority assigned based on sentiment, category, and SLA rules' },
-  { name: 'Drafting personalized response', output: 'LLM drafted reply using sender history and email context from CRM' },
-  { name: 'Generating follow-up suggestions', output: 'Strategic follow-up actions generated for sales or support team' },
-];
-
-const EXAMPLES = [
-  {
-    label: 'Angry Customer',
-    data: {
-      from: 'john@bigclient.com', from_name: 'John Carter', to: 'support@company.com',
-      subject: 'Completely unacceptable service!',
-      body: 'I am absolutely furious! Your product has been down for 3 hours and we have lost thousands in revenue. This is completely unacceptable and I am considering canceling our contract.',
-    },
-  },
-  {
-    label: 'Demo Request',
-    data: {
-      from: 'sarah@startup.io', from_name: 'Sarah Kim', to: 'sales@company.com',
-      subject: 'Interested in your enterprise plan',
-      body: 'Hi! I came across your platform and I am very excited. We are a Series B startup with 50 reps and need a proper CRM. Can we schedule a demo this week? Happy to discuss budget.',
-    },
-  },
-  {
-    label: 'Pricing Question',
-    data: {
-      from: 'mike@company.net', from_name: 'Mike Torres', to: 'sales@company.com',
-      subject: 'Pricing inquiry - 100 seat license',
-      body: 'Hello, we are currently using a competitor and evaluating alternatives. We need pricing for a 100-seat license. Do you offer annual discounts? Please send over your pricing sheet.',
-    },
-  },
-];
-
-const MOCK_RESULT: EmailIntelligenceResult = {
-  sentiment: {
-    score: 2,
-    label: 'negative',
-    emotion: 'frustration',
-    urgency: 'high',
-    concerns: ['Service downtime', 'Revenue loss', 'Contract cancellation threat'],
-  },
-  category: 'complaint',
-  priority: 'high',
-  draft_response: `Hi John,
-
-I sincerely apologize for the disruption you've experienced. I completely understand how frustrating a service outage can be, especially when it impacts your revenue.
-
-Our engineering team has identified and resolved the root cause. I'd like to personally ensure this doesn't happen again for your account.
-
-I'd love to schedule a call today to walk you through our remediation steps and discuss a service credit for the downtime. Are you available in the next 2 hours?
-
-Looking forward to making this right.
-
-Best,
-Customer Success Team`,
-  follow_up_suggestions: [
-    '1. Schedule immediate call within 2 hours to address concerns personally',
-    '2. Apply service credit for downtime period and document in account notes',
-    '3. Flag account for Customer Success monitoring — set 7-day health check',
-  ],
-  requires_human_review: true,
+const PRIORITY_COLOR: Record<string, string> = {
+  high: '#ff3b30', medium: '#ff9500', low: '#34c759',
+};
+const SENTIMENT_COLOR: Record<string, string> = {
+  positive: '#34c759', neutral: '#8e8e93', negative: '#ff3b30',
+};
+const CATEGORY_LABEL: Record<string, string> = {
+  support_request: 'Support', sales_inquiry: 'Sales', demo_request: 'Demo',
+  pricing_question: 'Pricing', complaint: 'Complaint', feature_request: 'Feature Req.',
+  general_inquiry: 'General',
 };
 
-// ---- Gmail + Calendar Integration Banner ----
-function GmailConnectBanner() {
-  // Default to 'disconnected' so the Connect button shows immediately in all browsers
-  const [gmailStatus, setGmailStatus] = useState<'connected' | 'disconnected'>('disconnected');
-  const [syncing,     setSyncing]     = useState(false);
-  const [syncMsg,     setSyncMsg]     = useState('');
+interface AnalyzedEmail {
+  id: string;
+  from_email: string;
+  subject: string;
+  body_preview: string;
+  company: string;
+  received_at: string | null;
+  analyzed: boolean;
+  sentiment_label: string;
+  sentiment_score: number;
+  sentiment_emotion: string;
+  sentiment_urgency: string;
+  category: string;
+  priority: string;
+  draft_response: string;
+  follow_up_suggestions: string[];
+}
+
+// ---- Gmail Connect Banner ----
+function GmailConnectBanner({ onSynced }: { onSynced: () => void }) {
+  const [status, setStatus] = useState<'connected' | 'disconnected'>('disconnected');
+  const [syncing, setSyncing] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const checkStatus = useCallback(async () => {
@@ -87,275 +46,357 @@ function GmailConnectBanner() {
       const res = await fetch('http://localhost:8000/api/auth/gmail/status');
       if (res.ok) {
         const data = await res.json() as { authenticated: boolean };
-        const authed = data.authenticated;
-        setGmailStatus(authed ? 'connected' : 'disconnected');
-        if (authed && pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+        setStatus(data.authenticated ? 'connected' : 'disconnected');
+        if (data.authenticated && pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
       }
-    } catch { /* backend offline — keep current state */ }
+    } catch { /* backend offline */ }
   }, []);
 
   useEffect(() => {
     checkStatus();
-    pollRef.current = setInterval(checkStatus, 3000);
-    // Listen for postMessage from the OAuth popup callback page
-    const onMessage = (e: MessageEvent) => {
-      if (e.data === 'gmail_auth_complete') { checkStatus(); }
-    };
-    window.addEventListener('message', onMessage);
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-      window.removeEventListener('message', onMessage);
-    };
+    pollRef.current = setInterval(checkStatus, 4000);
+    const onMsg = (e: MessageEvent) => { if (e.data === 'gmail_auth_complete') checkStatus(); };
+    window.addEventListener('message', onMsg);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); window.removeEventListener('message', onMsg); };
   }, [checkStatus]);
 
   const handleConnect = () => {
-    // FIREFOX FIX: open popup synchronously (in the click handler, before any await)
-    // then redirect it to the OAuth URL once we have it.
     const popup = window.open('about:blank', 'gmail_oauth', 'width=520,height=660,toolbar=0,scrollbars=1');
     fetch('http://localhost:8000/api/auth/gmail')
       .then(async (r) => {
-        if (!r.ok) {
-          // Backend error (e.g. credentials file not configured)
-          const err = await r.json().catch(() => ({ detail: 'Backend error' })) as { detail?: string };
-          if (popup && !popup.closed) {
-            popup.document.write(`<body style="font-family:sans-serif;background:#0a0a0f;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center;padding:32px;background:rgba(255,59,48,.08);border:1px solid rgba(255,59,48,.3);border-radius:20px;max-width:360px"><div style="font-size:40px;margin-bottom:16px">⚠️</div><h2 style="color:#ff3b30;margin:0 0 8px">Setup Required</h2><p style="color:rgba(255,255,255,.6);margin:0 0 16px;font-size:14px">${err.detail || 'Gmail credentials not configured.'}</p><p style="color:rgba(255,255,255,.4);font-size:12px">Add GMAIL_API_CREDENTIALS to backend/.env<br>then download credentials from Google Cloud Console.</p></div></body>`);
-          }
-          return;
-        }
+        if (!r.ok) { if (popup && !popup.closed) popup.close(); return; }
         return r.json();
       })
       .then((data?: { auth_url?: string }) => {
-        if (!data || !data.auth_url) return; // Already handled above
-        if (popup && !popup.closed) {
-          popup.location.href = data.auth_url;
-        } else {
-          // Popup was blocked — fall back to same-tab redirect
-          window.location.href = data.auth_url;
-        }
-        // Poll every 2s to detect when auth completes
-        if (pollRef.current) clearInterval(pollRef.current);
+        if (!data?.auth_url) return;
+        if (popup && !popup.closed) popup.location.href = data.auth_url;
         pollRef.current = setInterval(checkStatus, 2000);
       })
       .catch(() => { if (popup && !popup.closed) popup.close(); });
   };
 
-  const handleSync = async () => {
-    setSyncing(true); setSyncMsg('');
+  const handleSync = async (limit: number) => {
+    setSyncing(true);
     try {
-      const res = await fetch('http://localhost:8000/api/emails/sync?limit=20');
-      const data = await res.json() as { fetched?: number; saved_to_crm?: number; status?: string; detail?: string };
-      if (!res.ok) {
-        const errorMsg = data.detail || 'Sync error — check backend';
-        setSyncMsg(`❌ ${errorMsg}`);
-        // If backend tells us we aren't actually authenticated, reset state
-        if (errorMsg.toLowerCase().includes('not authenticated')) {
-          setGmailStatus('disconnected');
-        }
-      } else {
-        const fetched = data.fetched ?? 0;
-        const saved   = data.saved_to_crm ?? 0;
-        setSyncMsg(
-          fetched === 0
-            ? '📭 No unread emails in Gmail inbox right now'
-            : `✅ ${fetched} fetched, ${saved} new saved to CRM`
-        );
-      }
-    } catch { setSyncMsg('❌ Sync failed — backend unreachable'); }
-    setSyncing(false);
+      await fetch(`http://localhost:8000/api/emails/sync?limit=${limit}`);
+      setTimeout(onSynced, 1500);   // wait 1.5s for background analysis to start
+    } catch { /* ignore */ }
+    finally { setSyncing(false); }
   };
 
-  const connected = gmailStatus === 'connected';
-
+  const connected = status === 'connected';
   return (
-    <div
-      className="flex items-center gap-3 p-3 rounded-xl mb-4"
-      style={{
-        background: connected ? 'rgba(52,199,89,0.08)' : 'rgba(94,92,230,0.07)',
-        border: `1px solid ${connected ? 'rgba(52,199,89,0.3)' : 'rgba(94,92,230,0.25)'}`,
-      }}
-    >
-      <div
-        className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
-        style={{ background: connected ? 'rgba(52,199,89,0.15)' : 'rgba(94,92,230,0.15)' }}
-      >
-        <Mail size={15} color={connected ? '#34c759' : '#5e5ce6'} />
+    <div className="flex items-center gap-3 p-3 rounded-xl mb-5" style={{
+      background: connected ? 'rgba(52,199,89,0.08)' : 'rgba(94,92,230,0.07)',
+      border: `1px solid ${connected ? 'rgba(52,199,89,0.3)' : 'rgba(94,92,230,0.25)'}`,
+    }}>
+      <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+        style={{ background: connected ? 'rgba(52,199,89,0.15)' : 'rgba(94,92,230,0.15)' }}>
+        <Mail size={15} color={connected ? '#34c759' : COLOR} />
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>Gmail</p>
         <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
-          {connected ? 'Connected · Real emails synced' : 'Connect to sync real incoming emails'}
+          {connected ? 'Connected · Sync to fetch and analyze real inbox emails' : 'Connect Gmail to sync and analyze real emails'}
         </p>
-        {syncMsg && <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)', fontSize: 10 }}>{syncMsg}</p>}
       </div>
       {connected ? (
-        <button
-          onClick={handleSync} disabled={syncing}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold flex-shrink-0"
-          style={{ background: '#34c759', color: '#fff', cursor: syncing ? 'not-allowed' : 'pointer', opacity: syncing ? 0.7 : 1 }}
-        >
-          {syncing ? <Loader size={11} className="animate-spin" /> : <RefreshCw size={11} />}
-          {syncing ? 'Syncing…' : 'Sync Gmail'}
-        </button>
+        <span className="badge badge-green text-xs flex-shrink-0">Active</span>
       ) : (
-        <button
-          onClick={handleConnect}
+        <button onClick={handleConnect}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold flex-shrink-0"
-          style={{ background: '#5e5ce6', color: '#fff', cursor: 'pointer' }}
-        >
-          <Mail size={11} />
-          Connect Gmail
+          style={{ background: COLOR, color: '#fff', cursor: 'pointer' }}>
+          <Mail size={11} /> Connect
+        </button>
+      )}
+      {connected && (
+        <button onClick={() => handleSync(20)} disabled={syncing}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold flex-shrink-0"
+          style={{ background: syncing ? 'rgba(94,92,230,0.4)' : COLOR, color: '#fff', cursor: 'pointer', opacity: syncing ? 0.7 : 1 }}>
+          {syncing ? <Loader size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+          {syncing ? 'Syncing...' : 'Sync Gmail'}
         </button>
       )}
     </div>
   );
 }
 
-export default function EmailPage() {
-  const [result, setResult]         = useState<EmailIntelligenceResult | null>(null);
-  const [isComplete, setIsComplete] = useState(false);
-  const [error, setError]           = useState<string | null>(null);
-  const [copied, setCopied]         = useState(false);
+// ---- Single Email Card ----
+function EmailCard({ email }: { email: AnalyzedEmail }) {
+  const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
 
-
-  const handleRun = useCallback(async (formData: Record<string, string>) => {
-    setError(null);
-    setIsComplete(false);
-    setResult(null);
-
-    // Run animation and real API call in parallel
-    const apiCallPromise = fetch('http://localhost:8000/api/agents/analyze-email/sync', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email_data: formData }),
-    }).then(async (res) => {
-      if (!res.ok) return null;
-      return res.json() as Promise<EmailIntelligenceResult>;
-    }).catch(() => null);
-
-    // Wait for animation to complete (steps × delay + gaps)
-    await new Promise((r) => setTimeout(r, STEPS.length * 600 + 400));
-
-    // Use real result if available, else graceful fallback
-    const liveResult = await apiCallPromise;
-    setResult(liveResult ?? MOCK_RESULT);
-    setIsComplete(true);
-  }, []);
-
-  const copyResponse = () => {
-    if (result?.draft_response) {
-      navigator.clipboard.writeText(result.draft_response);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
+  const copyDraft = () => {
+    if (!email.draft_response) return;
+    navigator.clipboard.writeText(email.draft_response);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
-  const sentimentColor = (s: number) => s >= 7 ? '#34c759' : s >= 4 ? '#ff9500' : '#ff3b30';
+  const priorityColor = PRIORITY_COLOR[email.priority] || '#8e8e93';
+  const sentimentColor = SENTIMENT_COLOR[email.sentiment_label] || '#8e8e93';
 
   return (
-    <AgentPageLayout
-      agentName="Email Intelligence"
-      agentDescription="Analyzes email sentiment, categorizes intent, drafts personalized responses, and suggests strategic follow-ups."
-      agentColor={COLOR}
-      agentEmoji="📧"
-      formFields={[
-        { key: 'from', label: 'From Email', type: 'email', placeholder: 'customer@company.com' },
-        { key: 'from_name', label: 'From Name', placeholder: 'John Carter' },
-        { key: 'to', label: 'To Email', type: 'email', placeholder: 'support@yourcrm.com' },
-        { key: 'subject', label: 'Subject', placeholder: 'Email subject line' },
-        { key: 'body', label: 'Email Body', type: 'textarea', placeholder: 'Full email content...', rows: 5 },
-      ]}
-      defaultValues={EXAMPLES[0].data}
-      examples={EXAMPLES}
-      steps={STEPS}
-      onRun={handleRun}
-      error={error}
-      isComplete={isComplete}
-      headerExtra={<GmailConnectBanner />}
-      resultNode={result && (
-
-        <div className="space-y-4">
-          {/* Requires Review Banner */}
-          {result.requires_human_review && (
-            <div className="flex items-center gap-3 p-3 rounded-xl"
-              style={{ background: 'rgba(255,149,0,0.1)', border: '1px solid rgba(255,149,0,0.3)' }}>
-              <AlertTriangle size={16} color="#ff9500" />
-              <span className="text-sm font-semibold" style={{ color: '#ff9500' }}>Requires Human Review</span>
-              <span className="text-xs ml-auto" style={{ color: 'var(--text-tertiary)' }}>Negative sentiment or high priority detected</span>
-            </div>
-          )}
-
-          {/* Sentiment + Category */}
-          <div className="apple-card">
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Sentiment Score</p>
-                <div className="flex items-center gap-2">
-                  <span style={{ fontSize: 32, fontWeight: 800, color: sentimentColor(result.sentiment.score) }}>
-                    {result.sentiment.score}
-                  </span>
-                  <span style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>/10</span>
-                </div>
-                <span className={`badge badge-${result.sentiment.label === 'positive' ? 'green' : result.sentiment.label === 'negative' ? 'red' : 'gray'} mt-1`}>
-                  {result.sentiment.emotion}
-                </span>
-              </div>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Category</p>
-                <span className="badge badge-indigo text-sm" style={{ fontSize: 13 }}>{result.category.replace('_', ' ')}</span>
-              </div>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Priority</p>
-                <span className={`badge badge-${result.priority === 'high' ? 'red' : result.priority === 'medium' ? 'orange' : 'gray'} text-sm`} style={{ fontSize: 13 }}>
-                  {result.priority.toUpperCase()}
-                </span>
-                <div className="mt-1">
-                  <span className="badge badge-yellow">{result.sentiment.urgency} urgency</span>
-                </div>
-              </div>
-            </div>
-            {result.sentiment.concerns.length > 0 && (
-              <div className="mt-3 pt-3" style={{ borderTop: '1px solid var(--border-primary)' }}>
-                <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Key Concerns</p>
-                <div className="flex flex-wrap gap-2">
-                  {result.sentiment.concerns.map((c, i) => (
-                    <span key={i} className="chip" style={{ fontSize: 11, cursor: 'default' }}>{c}</span>
-                  ))}
-                </div>
-              </div>
+    <div className="apple-card mb-3 transition-all" style={{ borderColor: !email.analyzed ? 'var(--border-primary)' : `${priorityColor}22` }}>
+      {/* Header row */}
+      <div className="flex items-start gap-3">
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 text-xs font-bold"
+          style={{ background: `${COLOR}20`, color: COLOR }}>
+          {(email.from_email[0] || '?').toUpperCase()}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+              {email.from_email}
+            </span>
+            {email.company && (
+              <span className="badge" style={{ background: 'rgba(94,92,230,0.12)', color: COLOR }}>
+                {email.company}
+              </span>
             )}
           </div>
-
-          {/* Draft Response */}
-          <div className="apple-card">
-            <div className="flex items-center gap-2 mb-3">
-              <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>AI Draft Response</p>
-              <button className="btn-ghost ml-auto" style={{ fontSize: 12 }} onClick={copyResponse}>
-                {copied ? <><Check size={12} />Copied!</> : <><Copy size={12} />Copy</>}
-              </button>
+          <p className="text-xs mt-0.5 font-medium" style={{ color: 'var(--text-secondary)' }}>
+            {email.subject}
+          </p>
+          <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)', lineHeight: 1.4 }}>
+            {email.body_preview}{email.body_preview.length >= 200 ? '…' : ''}
+          </p>
+        </div>
+        <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+          {email.received_at && (
+            <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+              {new Date(email.received_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </span>
+          )}
+          {email.analyzed ? (
+            <div className="flex gap-1.5 flex-wrap justify-end">
+              <span className="badge" style={{ background: `${priorityColor}18`, color: priorityColor }}>
+                {email.priority}
+              </span>
+              <span className="badge" style={{ background: `${sentimentColor}18`, color: sentimentColor }}>
+                {email.sentiment_label}
+              </span>
+              <span className="badge" style={{ background: 'rgba(142,142,147,0.12)', color: 'var(--text-secondary)' }}>
+                {CATEGORY_LABEL[email.category] || email.category}
+              </span>
             </div>
-            <div className="apple-glass" style={{ padding: 14 }}>
-              <pre style={{ fontFamily: 'var(--font-primary)', fontSize: 13, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
-                {result.draft_response}
-              </pre>
-            </div>
-          </div>
+          ) : (
+            <span className="badge" style={{ background: 'rgba(255,149,0,0.12)', color: '#ff9500' }}>
+              Pending analysis
+            </span>
+          )}
+        </div>
+      </div>
 
-          {/* Follow-up Suggestions */}
-          <div className="apple-card">
-            <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Follow-up Suggestions</p>
-            <div className="space-y-2">
-              {result.follow_up_suggestions.map((s, i) => (
-                <div key={i} className="flex items-start gap-3 p-3 rounded-xl" style={{ background: 'var(--bg-input)', border: '1px solid var(--border-secondary)' }}>
-                  <div className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold" style={{ background: COLOR, color: '#fff' }}>
-                    {i + 1}
+      {/* Expand / collapse */}
+      {email.analyzed && (
+        <>
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="flex items-center gap-1 mt-3 text-xs font-medium"
+            style={{ color: COLOR, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+            {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+            {expanded ? 'Hide' : 'Show'} AI Analysis & Draft
+          </button>
+
+          {expanded && (
+            <div className="mt-3 space-y-3 animate-fade-in-up">
+              {/* Sentiment row */}
+              <div className="flex gap-3 flex-wrap">
+                {[
+                  { label: 'Score', value: `${email.sentiment_score}/10` },
+                  { label: 'Emotion', value: email.sentiment_emotion },
+                  { label: 'Urgency', value: email.sentiment_urgency },
+                ].map(({ label, value }) => (
+                  <div key={label} className="px-3 py-1.5 rounded-lg" style={{ background: 'var(--bg-tertiary)' }}>
+                    <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{label}</p>
+                    <p className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>{value}</p>
                   </div>
-                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{s.replace(/^\d+\.\s*/, '')}</span>
+                ))}
+              </div>
+
+              {/* AI Draft */}
+              {email.draft_response && (
+                <div className="rounded-xl p-3" style={{ background: `${COLOR}08`, border: `1px solid ${COLOR}22` }}>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-semibold" style={{ color: COLOR }}>AI Draft Response</p>
+                    <button onClick={copyDraft}
+                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs"
+                      style={{ background: `${COLOR}18`, color: COLOR, border: 'none', cursor: 'pointer' }}>
+                      {copied ? <Check size={11} /> : null}
+                      {copied ? 'Copied!' : 'Copy'}
+                    </button>
+                  </div>
+                  <pre className="text-xs whitespace-pre-wrap" style={{ color: 'var(--text-secondary)', fontFamily: 'inherit', lineHeight: 1.6 }}>
+                    {email.draft_response}
+                  </pre>
                 </div>
-              ))}
+              )}
+
+              {/* Follow-ups */}
+              {email.follow_up_suggestions?.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold mb-1.5" style={{ color: 'var(--text-secondary)' }}>Follow-up Actions</p>
+                  <div className="space-y-1">
+                    {email.follow_up_suggestions.map((f, i) => (
+                      <div key={i} className="flex items-start gap-2">
+                        <span className="w-4 h-4 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-bold mt-0.5"
+                          style={{ background: `${COLOR}20`, color: COLOR }}>{i + 1}</span>
+                        <p className="text-xs" style={{ color: 'var(--text-secondary)', lineHeight: 1.4 }}>{f}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ---- Main Page ----
+export default function EmailPage() {
+  const [emails, setEmails] = useState<AnalyzedEmail[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [fetchLimit, setFetchLimit] = useState(20);
+  const [error, setError] = useState<string | null>(null);
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+
+  const loadEmails = useCallback(async (limit: number = fetchLimit) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`http://localhost:8000/api/emails/analyzed?limit=${limit}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json() as AnalyzedEmail[];
+      setEmails(data);
+      setLastRefresh(new Date());
+    } catch (e) {
+      setError(`Failed to load emails: ${e}`);
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchLimit]);
+
+  useEffect(() => { loadEmails(); }, [loadEmails]);
+
+  const analyzed   = emails.filter(e => e.analyzed);
+  const unanalyzed = emails.filter(e => !e.analyzed);
+  const highPri    = analyzed.filter(e => e.priority === 'high');
+
+  return (
+    <div>
+      {/* Page header */}
+      <div className="mb-5">
+        <div className="flex items-center gap-2 mb-0.5">
+          <span style={{ fontSize: 22 }}>📧</span>
+          <h1 className="section-title" style={{ fontSize: 22 }}>Email Intelligence</h1>
+          <span className="badge badge-blue ml-2">AI Agent</span>
+        </div>
+        <p className="section-subtitle">
+          Fetches real Gmail emails, runs AI analysis (VADER sentiment + LLM categorization), and drafts personalized responses — all stored in CRM.
+        </p>
+      </div>
+
+      {/* Gmail connect + sync banner */}
+      <GmailConnectBanner onSynced={() => loadEmails()} />
+
+      {/* Controls row */}
+      <div className="flex items-center gap-3 mb-4 flex-wrap">
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>Show last</label>
+          <select
+            className="form-input"
+            style={{ width: 80, padding: '6px 10px', fontSize: 13 }}
+            value={fetchLimit}
+            onChange={(e) => { const v = parseInt(e.target.value); setFetchLimit(v); loadEmails(v); }}>
+            {[10, 20, 30, 50].map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
+          <label className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>emails</label>
+        </div>
+        <button
+          onClick={() => loadEmails()}
+          disabled={loading}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold"
+          style={{ background: loading ? 'rgba(94,92,230,0.3)' : COLOR, color: '#fff', cursor: 'pointer', border: 'none' }}>
+          {loading ? <Loader size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+          {loading ? 'Loading...' : 'Refresh'}
+        </button>
+        {lastRefresh && (
+          <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+            Last refreshed {lastRefresh.toLocaleTimeString()}
+          </span>
+        )}
+      </div>
+
+      {/* Stats row */}
+      {emails.length > 0 && (
+        <div className="flex gap-3 mb-4 flex-wrap">
+          {[
+            { label: 'Total in CRM', value: emails.length, color: COLOR },
+            { label: 'AI Analyzed', value: analyzed.length, color: '#34c759' },
+            { label: 'High Priority', value: highPri.length, color: '#ff3b30' },
+            { label: 'Pending', value: unanalyzed.length, color: '#ff9500' },
+          ].map(({ label, value, color }) => (
+            <div key={label} className="apple-card flex-1 min-w-0 py-2 px-3" style={{ borderColor: `${color}22` }}>
+              <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{label}</p>
+              <p className="text-xl font-bold" style={{ color }}>{value}</p>
+            </div>
+          ))}
         </div>
       )}
-    />
+
+      {/* Error */}
+      {error && (
+        <div className="flex items-center gap-2 p-3 rounded-xl mb-4"
+          style={{ background: 'rgba(255,59,48,0.08)', border: '1px solid rgba(255,59,48,0.3)' }}>
+          <AlertTriangle size={14} color="#ff3b30" />
+          <p className="text-xs" style={{ color: '#ff3b30' }}>{error}</p>
+        </div>
+      )}
+
+      {/* Email list */}
+      {loading && emails.length === 0 ? (
+        <div className="apple-card flex flex-col items-center justify-center" style={{ minHeight: 200 }}>
+          <Loader size={28} color={COLOR} className="animate-spin mb-3" />
+          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Loading emails from CRM…</p>
+        </div>
+      ) : emails.length === 0 ? (
+        <div className="apple-card flex flex-col items-center justify-center" style={{ minHeight: 240, opacity: 0.7 }}>
+          <Inbox size={40} color="var(--text-tertiary)" style={{ marginBottom: 12 }} />
+          <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>No emails in CRM yet</p>
+          <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>
+            Connect Gmail and click "Sync Gmail" to fetch and analyze your inbox
+          </p>
+        </div>
+      ) : (
+        <div>
+          {highPri.length > 0 && (
+            <p className="text-xs font-semibold mb-2 uppercase" style={{ color: '#ff3b30', letterSpacing: '0.08em' }}>
+              🔴 High Priority ({highPri.length})
+            </p>
+          )}
+          {highPri.map(e => <EmailCard key={e.id} email={e} />)}
+
+          {analyzed.filter(e => e.priority !== 'high').length > 0 && (
+            <p className="text-xs font-semibold mb-2 mt-4 uppercase" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.08em' }}>
+              Other Analyzed ({analyzed.filter(e => e.priority !== 'high').length})
+            </p>
+          )}
+          {analyzed.filter(e => e.priority !== 'high').map(e => <EmailCard key={e.id} email={e} />)}
+
+          {unanalyzed.length > 0 && (
+            <>
+              <p className="text-xs font-semibold mb-2 mt-4 uppercase" style={{ color: '#ff9500', letterSpacing: '0.08em' }}>
+                ⏳ Pending AI Analysis ({unanalyzed.length})
+              </p>
+              {unanalyzed.map(e => <EmailCard key={e.id} email={e} />)}
+            </>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

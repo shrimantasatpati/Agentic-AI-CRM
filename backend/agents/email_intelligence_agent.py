@@ -316,10 +316,41 @@ Return ONLY this JSON:
         return domain in vip_domains
 
     async def _get_customer_context(self, email: str) -> str:
-        """Get customer history from CRM"""
-        # Query CRM for past interactions
-        # Placeholder implementation
-        return "First-time contact, no previous interactions"
+        """Get customer history from CRM — queries real contacts and emails tables."""
+        if not email:
+            return "No sender email provided"
+        try:
+            from database.connection import SessionLocal
+            from database.models import Contact, Email as EmailModel
+            db = SessionLocal()
+            try:
+                contact = db.query(Contact).filter(Contact.email == email).first()
+                if not contact:
+                    return f"First-time contact — no record found for {email}"
+
+                # Count past emails
+                past_emails = db.query(EmailModel).filter(EmailModel.from_email == email).all()
+                email_count = len(past_emails)
+
+                # Get most recent sentiment from past analyzed emails
+                analyzed = [e for e in past_emails if (e.extra_metadata or {}).get("agent_analyzed")]
+                recent_sentiments = [
+                    (e.extra_metadata or {}).get("sentiment", {}).get("label", "unknown")
+                    for e in analyzed[-3:]
+                ]
+
+                lead_info = f"Lead score: {contact.lead_score}/100 · Status: {contact.lead_status}"
+                if email_count == 0:
+                    history = "First contact — no previous emails in CRM"
+                else:
+                    sentiment_summary = ", ".join(recent_sentiments) if recent_sentiments else "not yet analyzed"
+                    history = f"{email_count} previous email(s) · Recent sentiments: {sentiment_summary}"
+
+                return f"{lead_info} · {history}"
+            finally:
+                db.close()
+        except Exception as e:
+            return f"Context lookup failed: {e}"
 
     def _extract_sentiment_score(self, text: str) -> int:
         """Extract sentiment score from LLM response"""

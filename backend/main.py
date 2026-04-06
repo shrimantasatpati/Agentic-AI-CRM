@@ -698,6 +698,90 @@ async def analyze_inbox_emails(limit: int = 10, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Inbox analysis failed: {e}")
 
 
+# ============================================================================
+# LIGHTWEIGHT LIST ENDPOINTS — for frontend dropdowns & email batch-view
+# ============================================================================
+
+@app.get("/api/deals/list")
+async def list_deals_for_dropdown(db: Session = Depends(get_db)):
+    """Return all deals with minimal fields for the Sales Pipeline dropdown."""
+    from database.models import Deal
+    from sqlalchemy import desc
+    deals = db.query(Deal).order_by(desc(Deal.created_at)).limit(200).all()
+    return [
+        {
+            "id": d.id,
+            "name": d.name,
+            "stage": d.stage,
+            "value": d.value,
+            "health_score": d.health_score,
+            "is_stalled": d.is_stalled,
+        }
+        for d in deals
+    ]
+
+
+@app.get("/api/customers/list")
+async def list_customers_for_dropdown(db: Session = Depends(get_db)):
+    """Return all customers with minimal fields for the Customer Success dropdown."""
+    from database.models import Customer, Company
+    from sqlalchemy import desc
+    customers = db.query(Customer, Company.name.label("company_name")).join(
+        Company, Customer.company_id == Company.id, isouter=True
+    ).order_by(desc(Customer.created_at)).limit(200).all()
+    return [
+        {
+            "id": c.Customer.id,
+            "company_name": c.company_name or "Unknown Company",
+            "plan": c.Customer.plan,
+            "mrr": c.Customer.mrr,
+            "health_score": c.Customer.health_score,
+            "churn_risk": c.Customer.churn_risk,
+        }
+        for c in customers
+    ]
+
+
+@app.get("/api/emails/analyzed")
+async def get_analyzed_emails(limit: int = 20, db: Session = Depends(get_db)):
+    """
+    Return last N emails from CRM DB that have been analyzed by the Email Intelligence Agent.
+    Used by the new batch-view Email Intelligence UI.
+    """
+    from database.models import Email as EmailModel
+    from sqlalchemy import desc
+    emails = (
+        db.query(EmailModel)
+        .filter(EmailModel.direction == "inbound")
+        .order_by(desc(EmailModel.created_at))
+        .limit(limit * 3)   # fetch more, filter to analyzed
+        .all()
+    )
+    result = []
+    for e in emails:
+        meta = e.extra_metadata or {}
+        sentiment = meta.get("sentiment") or {}
+        result.append({
+            "id": e.id,
+            "from_email": e.from_email or "",
+            "subject": e.subject or "(no subject)",
+            "body_preview": (e.body or "")[:200],
+            "company": (e.from_email or "").split("@")[-1] if e.from_email else "",
+            "received_at": e.created_at.strftime("%Y-%m-%dT%H:%M:%S") if e.created_at else None,
+            "analyzed": meta.get("agent_analyzed", False),
+            "sentiment_label": sentiment.get("label", "—"),
+            "sentiment_score": sentiment.get("score", 0),
+            "sentiment_emotion": sentiment.get("emotion", "—"),
+            "sentiment_urgency": sentiment.get("urgency", "—"),
+            "category": meta.get("category", "—"),
+            "priority": meta.get("priority", "—"),
+            "draft_response": meta.get("draft_response", ""),
+            "follow_up_suggestions": meta.get("follow_up_suggestions", []),
+        })
+        if len(result) >= limit:
+            break
+    return result
+
 class SendReplyRequest(BaseModel):
     to_email: str
     subject: str

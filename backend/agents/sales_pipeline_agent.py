@@ -361,31 +361,60 @@ Return exactly:
     async def _get_deal_data(self, deal_id: str, db: Any = None) -> Dict[str, Any]:
         """Get deal data from database"""
         if db:
-            from database.models import Deal
+            from database.models import Deal, Activity
+            from datetime import datetime
             deal = db.query(Deal).filter(Deal.id == deal_id).first()
             if deal:
-                # Calculate age manually for the prompt
                 age_days = (datetime.now() - deal.created_at).days if deal.created_at else 0
+
+                # Real activity lookup — query activities linked to this deal
+                activities = db.query(Activity).filter(Activity.deal_id == deal_id).all()
+                activities_count = len(activities)
+
+                # Last contact: most recent activity created_at
+                if activities:
+                    last_activity_dt = max((a.created_at for a in activities if a.created_at), default=None)
+                    last_contact_days_ago = (datetime.now() - last_activity_dt).days if last_activity_dt else age_days
+                else:
+                    # Fall back to contact's last_contact_at if no activities for this deal
+                    if deal.contact_id:
+                        from database.models import Contact
+                        contact = db.query(Contact).filter(Contact.id == deal.contact_id).first()
+                        if contact and contact.last_contact_at:
+                            last_contact_days_ago = (datetime.now() - contact.last_contact_at).days
+                        else:
+                            last_contact_days_ago = age_days
+                    else:
+                        last_contact_days_ago = age_days
+
+                # Engagement level derived from last contact recency
+                if last_contact_days_ago <= 3:
+                    engagement_level = "high"
+                elif last_contact_days_ago <= 10:
+                    engagement_level = "medium"
+                else:
+                    engagement_level = "low"
+
                 return {
                     "id": deal.id,
                     "name": deal.name,
                     "value": deal.value,
                     "stage": deal.stage,
-                    "days_in_stage": age_days, # Approximation
-                    "last_contact_days_ago": 2, # Mock
-                    "engagement_level": "medium",
-                    "decision_maker_engaged": True,
-                    "competitor_activity": "low",
-                    "budget_confirmed": True,
-                    "timeline_confirmed": True,
+                    "days_in_stage": age_days,
+                    "last_contact_days_ago": last_contact_days_ago,
+                    "engagement_level": engagement_level,
+                    "decision_maker_engaged": last_contact_days_ago <= 7,
+                    "competitor_activity": "unknown",
+                    "budget_confirmed": deal.stage in ["proposal", "negotiation", "closed_won"],
+                    "timeline_confirmed": deal.stage in ["negotiation", "closed_won"],
                     "age_days": age_days,
-                    "activities_count": 10,
-                    "proposal_sent": deal.stage in ['proposal', 'negotiation', 'won'],
-                    "blockers": []
+                    "activities_count": activities_count,
+                    "proposal_sent": deal.stage in ["proposal", "negotiation", "closed_won"],
+                    "blockers": deal.risk_factors or []
                 }
             return {"error": "Deal not found"}
-        
-        # No db session provided \u2014 cannot fabricate deal data
+
+        # No db session provided — cannot fabricate deal data
         return {"error": "No database session provided"}
 
     async def _get_active_deals(self) -> List[Dict[str, Any]]:

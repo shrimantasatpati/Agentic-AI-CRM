@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useCallback } from 'react';
-import { AlertTriangle, TrendingUp, Check } from 'lucide-react';
+import { useState, useCallback, useEffect } from 'react';
+import { AlertTriangle, TrendingUp, Check, Loader } from 'lucide-react';
 import AgentPageLayout from '@/components/AgentPageLayout';
 import ScoreGauge from '@/components/ScoreGauge';
 import type { CustomerSuccessResult } from '@/types';
@@ -18,54 +18,16 @@ const STEPS = [
   { name: 'Publishing alerts if at-risk', output: 'Churn alert published to Customer Success team if risk threshold met' },
 ];
 
-const EXAMPLES = [
-  {
-    label: 'Critical Churn Risk',
-    data: { customer_id: 'cust_001', company_name: 'Acme Corp', mrr: '3200', health_score: '34', last_login_days: '8' },
-  },
-  {
-    label: 'Healthy Customer',
-    data: { customer_id: 'cust_002', company_name: 'TechVista Inc', mrr: '8500', health_score: '88', last_login_days: '1' },
-  },
-  {
-    label: 'Medium Risk',
-    data: { customer_id: 'cust_003', company_name: 'RetailCo', mrr: '1800', health_score: '55', last_login_days: '4' },
-  },
-];
+interface CustomerOption {
+  id: string;
+  company_name: string;
+  plan: string;
+  mrr: number;
+  health_score: number;
+  churn_risk: string;
+}
 
-const MOCK_RESULT: CustomerSuccessResult = {
-  customer_id: 'cust_001',
-  company_name: 'Acme Corp',
-  health_score: 34,
-  churn_risk: {
-    level: 'critical',
-    probability: 78,
-    factors: [
-      'Login frequency dropped 80% in last 30 days',
-      'Support tickets unresolved for 12+ days',
-      'No responses to last 3 outreach attempts',
-      'Champion contact left the company',
-    ],
-  },
-  engagement: {
-    logins_per_week: 0.8,
-    feature_adoption_pct: 22,
-    last_login: '8 days ago',
-  },
-  upsell_opportunities: [
-    { type: 'Expansion', description: 'Analytics Pro add-on matches their use case', confidence: 0.45, estimated_value: 800 },
-    { type: 'Seats', description: 'Marketing team not yet onboarded (15 seats available)', confidence: 0.30, estimated_value: 600 },
-  ],
-  recommended_actions: [
-    { priority: 'high', action: 'Emergency executive call — CEO to CEO outreach within 24 hours', due_date: 'Today' },
-    { priority: 'high', action: 'Assign dedicated CSM for white-glove support intervention', due_date: 'Today' },
-    { priority: 'high', action: 'Resolve all open support tickets immediately and issue SLA credit', due_date: 'Today' },
-    { priority: 'medium', action: 'Identify new champion — schedule onboarding for incoming contact', due_date: 'This week' },
-    { priority: 'low', action: 'Send updated product roadmap — aligns with their key requests', due_date: 'Next week' },
-  ],
-};
-
-const churnColors: Record<string, string> = {
+const CHURN_COLOR: Record<string, string> = {
   low: '#34c759', medium: '#ff9500', high: '#ff6b00', critical: '#ff3b30',
 };
 const churnBadge: Record<string, string> = {
@@ -77,53 +39,154 @@ export default function CustomersPage() {
   const [isComplete, setIsComplete] = useState(false);
   const [error, setError]           = useState<string | null>(null);
 
-  const handleRun = useCallback(async (formData: Record<string, string>) => {
+  // Customer list from CRM DB
+  const [customers, setCustomers]         = useState<CustomerOption[]>([]);
+  const [customersLoading, setCustomersLoading] = useState(true);
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerOption | null>(null);
+
+  useEffect(() => {
+    fetch('http://localhost:8000/api/customers/list')
+      .then(r => r.ok ? r.json() : [])
+      .then((data: CustomerOption[]) => {
+        setCustomers(data);
+        if (data.length > 0) setSelectedCustomer(data[0]);
+      })
+      .catch(() => {})
+      .finally(() => setCustomersLoading(false));
+  }, []);
+
+  const handleRun = useCallback(async (_fd: Record<string, string>) => {
+    if (!selectedCustomer) return;
     setError(null);
     setIsComplete(false);
-    try {
-      await fetch(`http://localhost:8000/api/agents/monitor-customer/${formData.customer_id || 'cust_001'}`, {
-        method: 'POST',
-      }).catch(() => null);
-    } catch { /* ignore */ }
-    await new Promise((r) => setTimeout(r, STEPS.length * 500 + 600));
-    setResult({ ...MOCK_RESULT, company_name: formData.company_name || MOCK_RESULT.company_name });
+
+    const res = await fetch(`http://localhost:8000/api/agents/monitor-customer/${selectedCustomer.id}`, {
+      method: 'POST',
+    }).then(r => r.ok ? r.json() : null).catch(() => null);
+
+    if (res) {
+      const healthScore = res.health_score ?? selectedCustomer.health_score;
+      const churnLevel  = res.churn_risk?.level ?? selectedCustomer.churn_risk ?? 'low';
+      setResult({
+        customer_id: selectedCustomer.id,
+        company_name: selectedCustomer.company_name,
+        health_score: healthScore,
+        churn_risk: {
+          level: churnLevel,
+          probability: res.churn_risk?.probability ?? Math.max(0, 100 - healthScore),
+          factors: res.churn_risk?.factors ?? [],
+        },
+        engagement: res.engagement ?? {
+          logins_per_week: 0,
+          feature_adoption_pct: 0,
+          last_login: '—',
+        },
+        upsell_opportunities: res.opportunities ?? res.upsell_opportunities ?? [],
+        recommended_actions: res.recommended_actions ?? [],
+      });
+    } else {
+      setError('Agent call failed — using stored CRM data');
+      setResult({
+        customer_id: selectedCustomer.id,
+        company_name: selectedCustomer.company_name,
+        health_score: selectedCustomer.health_score,
+        churn_risk: {
+          level: selectedCustomer.churn_risk,
+          probability: Math.max(0, 100 - selectedCustomer.health_score),
+          factors: [],
+        },
+        engagement: { logins_per_week: 0, feature_adoption_pct: 0, last_login: '—' },
+        upsell_opportunities: [],
+        recommended_actions: [],
+      });
+    }
     setIsComplete(true);
-  }, []);
+  }, [selectedCustomer]);
+
+  const customerSelector = (
+    <div className="apple-card mb-4">
+      <h3 className="font-700 text-sm mb-3" style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
+        Select Customer from CRM
+      </h3>
+      {customersLoading ? (
+        <div className="flex items-center gap-2 py-2">
+          <Loader size={14} color={COLOR} className="animate-spin" />
+          <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>Loading customers…</span>
+        </div>
+      ) : customers.length === 0 ? (
+        <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>No customers found in CRM. Run the seed script.</p>
+      ) : (
+        <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+          {customers.map(c => (
+            <button
+              key={c.id}
+              onClick={() => setSelectedCustomer(c)}
+              className="w-full text-left px-3 py-2.5 rounded-xl transition-all"
+              style={{
+                background: selectedCustomer?.id === c.id ? `${COLOR}15` : 'var(--bg-input)',
+                border: `1px solid ${selectedCustomer?.id === c.id ? `${COLOR}40` : 'var(--border-secondary)'}`,
+              }}>
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full flex-shrink-0"
+                  style={{ background: CHURN_COLOR[c.churn_risk] || '#8e8e93' }} />
+                <span className="text-xs font-semibold truncate flex-1" style={{ color: 'var(--text-primary)' }}>
+                  {c.company_name}
+                </span>
+                <span className={`badge ${churnBadge[c.churn_risk] || 'badge-gray'} text-xs flex-shrink-0`}>
+                  {c.churn_risk} risk
+                </span>
+              </div>
+              <div className="flex gap-3 mt-1 ml-4">
+                <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{c.plan}</span>
+                <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
+                  ${(c.mrr ?? 0).toLocaleString()}/mo
+                </span>
+                <span className="text-xs" style={{
+                  color: c.health_score >= 70 ? '#34c759' : c.health_score >= 40 ? '#ff9500' : '#ff3b30'
+                }}>
+                  Health {c.health_score}
+                </span>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <AgentPageLayout
       agentName="Customer Success"
-      agentDescription="Monitors customer health scores, detects churn risk, analyzes engagement, and identifies upsell opportunities."
+      agentDescription="Monitors customer health from CRM data, detects churn risk, analyzes engagement metrics, and generates AI-powered retention recommendations."
       agentColor={COLOR}
       agentEmoji="🎉"
-      formFields={[
-        { key: 'company_name', label: 'Company Name', placeholder: 'Acme Corp' },
-        { key: 'customer_id', label: 'Customer ID', placeholder: 'cust_001' },
-        { key: 'mrr', label: 'Monthly Recurring Revenue ($)', placeholder: '3200' },
-        { key: 'health_score', label: 'Current Health Score (0–100)', placeholder: '34' },
-        { key: 'last_login_days', label: 'Days Since Last Login', placeholder: '8' },
-      ]}
-      defaultValues={EXAMPLES[0].data}
-      examples={EXAMPLES}
+      formFields={[]}
+      defaultValues={{}}
+      examples={[]}
       steps={STEPS}
       onRun={handleRun}
       error={error}
       isComplete={isComplete}
+      headerExtra={customerSelector}
       resultNode={result && (
         <div className="space-y-4">
+          {/* Company title */}
+          <div className="apple-card py-2 px-3" style={{ borderColor: `${COLOR}30` }}>
+            <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Analyzing</p>
+            <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{result.company_name}</p>
+          </div>
+
           {/* Health + Churn Risk */}
           <div className="apple-card flex gap-6 items-center">
             <ScoreGauge score={result.health_score} size={110} label="Health" />
             <div className="flex-1">
               <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Churn Risk</p>
               <div className="flex items-center gap-3 mb-2">
-                <span
-                  className={`badge ${churnBadge[result.churn_risk.level]}`}
-                  style={{ fontSize: 16, padding: '6px 16px', fontWeight: 700, letterSpacing: '0.05em' }}
-                >
+                <span className={`badge ${churnBadge[result.churn_risk.level]}`}
+                  style={{ fontSize: 16, padding: '6px 16px', fontWeight: 700, letterSpacing: '0.05em' }}>
                   {result.churn_risk.level.toUpperCase()}
                 </span>
-                <span style={{ fontSize: 28, fontWeight: 800, color: churnColors[result.churn_risk.level] }}>
+                <span style={{ fontSize: 28, fontWeight: 800, color: CHURN_COLOR[result.churn_risk.level] }}>
                   {result.churn_risk.probability}%
                 </span>
               </div>
@@ -150,60 +213,66 @@ export default function CustomersPage() {
             </div>
           </div>
 
-          {/* Churn Risk Factors */}
-          <div className="apple-card">
-            <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Risk Factors</p>
-            <div className="space-y-2">
-              {result.churn_risk.factors.map((f, i) => (
-                <div key={i} className="flex items-start gap-2 p-2 rounded-lg"
-                  style={{ background: 'rgba(255,59,48,0.06)', border: '1px solid rgba(255,59,48,0.15)' }}>
-                  <AlertTriangle size={13} color="#ff3b30" className="flex-shrink-0 mt-0.5" />
-                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{f}</span>
-                </div>
-              ))}
+          {/* Risk Factors */}
+          {result.churn_risk.factors?.length > 0 && (
+            <div className="apple-card">
+              <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Risk Factors</p>
+              <div className="space-y-2">
+                {result.churn_risk.factors.map((f, i) => (
+                  <div key={i} className="flex items-start gap-2 p-2 rounded-lg"
+                    style={{ background: 'rgba(255,59,48,0.06)', border: '1px solid rgba(255,59,48,0.15)' }}>
+                    <AlertTriangle size={13} color="#ff3b30" className="flex-shrink-0 mt-0.5" />
+                    <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{f}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Upsell Opportunities */}
-          <div className="apple-card">
-            <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Upsell Opportunities</p>
-            <div className="space-y-3">
-              {result.upsell_opportunities.map((u, i) => (
-                <div key={i} className="p-3 rounded-xl" style={{ background: 'var(--bg-input)', border: '1px solid var(--border-secondary)' }}>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="badge badge-teal">{u.type}</span>
-                    <span className="text-xs ml-auto" style={{ color: 'var(--text-tertiary)' }}>
-                      Confidence: {Math.round(u.confidence * 100)}%
-                    </span>
-                    <span className="text-xs font-semibold" style={{ color: COLOR }}>+${u.estimated_value}/mo</span>
+          {result.upsell_opportunities?.length > 0 && (
+            <div className="apple-card">
+              <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Upsell Opportunities</p>
+              <div className="space-y-3">
+                {result.upsell_opportunities.map((u, i) => (
+                  <div key={i} className="p-3 rounded-xl" style={{ background: 'var(--bg-input)', border: '1px solid var(--border-secondary)' }}>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="badge badge-teal">{u.type}</span>
+                      <span className="text-xs ml-auto" style={{ color: 'var(--text-tertiary)' }}>
+                        Confidence: {Math.round((u.confidence ?? 0) * 100)}%
+                      </span>
+                      <span className="text-xs font-semibold" style={{ color: COLOR }}>+${u.estimated_value}/mo</span>
+                    </div>
+                    <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{u.description}</p>
                   </div>
-                  <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{u.description}</p>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Recommended Actions */}
-          <div className="apple-card">
-            <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Recommended Actions</p>
-            <div className="space-y-2">
-              {result.recommended_actions.map((a, i) => (
-                <div key={i} className="flex items-start gap-3 p-3 rounded-xl"
-                  style={{
-                    background: a.priority === 'high' ? 'rgba(255,59,48,0.05)' : 'var(--bg-input)',
-                    border: `1px solid ${a.priority === 'high' ? 'rgba(255,59,48,0.15)' : 'var(--border-secondary)'}`,
-                  }}>
-                  <span className={`badge badge-${a.priority === 'high' ? 'red' : a.priority === 'medium' ? 'orange' : 'gray'} flex-shrink-0`}>
-                    {a.priority}
-                  </span>
-                  <span className="text-sm flex-1" style={{ color: 'var(--text-secondary)' }}>{a.action}</span>
-                  {a.due_date && (
-                    <span className="text-xs flex-shrink-0" style={{ color: 'var(--text-tertiary)' }}>{a.due_date}</span>
-                  )}
-                </div>
-              ))}
+          {result.recommended_actions?.length > 0 && (
+            <div className="apple-card">
+              <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Recommended Actions</p>
+              <div className="space-y-2">
+                {result.recommended_actions.map((a, i) => (
+                  <div key={i} className="flex items-start gap-3 p-3 rounded-xl"
+                    style={{
+                      background: a.priority === 'high' ? 'rgba(255,59,48,0.05)' : 'var(--bg-input)',
+                      border: `1px solid ${a.priority === 'high' ? 'rgba(255,59,48,0.15)' : 'var(--border-secondary)'}`,
+                    }}>
+                    <span className={`badge badge-${a.priority === 'high' ? 'red' : a.priority === 'medium' ? 'orange' : 'gray'} flex-shrink-0`}>
+                      {a.priority}
+                    </span>
+                    <span className="text-sm flex-1" style={{ color: 'var(--text-secondary)' }}>{a.action}</span>
+                    {a.due_date && (
+                      <span className="text-xs flex-shrink-0" style={{ color: 'var(--text-tertiary)' }}>{a.due_date}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
     />
