@@ -93,12 +93,15 @@ def seed_all():
     try:
         print("🌱 Starting seed data insertion...")
 
-        # ── Guard: skip if already seeded ─────────────────────────────────────
-        existing_count = db.query(Company).count()
-        if existing_count > 0:
-            print(f"\n✅ Database already seeded ({existing_count} companies found) — skipping.")
-            print("   To re-seed, delete backend/ai_crm.db and run db_setup.py again.")
-            return
+        # ── Clear existing data (Except emails, agent logs, agent events) ─────
+        db.query(MetricsDaily).delete()
+        db.query(Activity).delete()
+        db.query(Meeting).delete()
+        db.query(Customer).delete()
+        db.query(Deal).delete()
+        db.query(Contact).delete()
+        db.query(Company).delete()
+        db.flush()
 
         # ── Companies ─────────────────────────────────────────────────────────
         print("  → Seeding companies...")
@@ -122,7 +125,7 @@ def seed_all():
         # ── Contacts ──────────────────────────────────────────────────────────
         print("  → Seeding contacts...")
         contact_objs = []
-        for i in range(30):
+        for i in range(10):
             company = random.choice(company_objs)
             first  = random.choice(FIRST_NAMES)
             last   = random.choice(LAST_NAMES)
@@ -149,7 +152,7 @@ def seed_all():
         # ── Deals ─────────────────────────────────────────────────────────────
         print("  → Seeding deals...")
         deal_objs = []
-        for i in range(20):
+        for i in range(10):
             contact = random.choice(contact_objs)
             stage   = random.choice(DEAL_STAGES)
             value   = random.choice([5000, 10000, 25000, 50000, 75000, 100000, 250000])
@@ -177,7 +180,7 @@ def seed_all():
         # ── Customers ─────────────────────────────────────────────────────────
         print("  → Seeding customers...")
         customer_objs = []
-        for company in random.sample(company_objs, 7):
+        for company in random.sample(company_objs, 10):
             plan  = random.choice(PLANS)
             mrr   = {"Starter": 99, "Professional": 499, "Enterprise": 1999, "Custom": 4999}[plan]
             start = rand_past_date(500).date()
@@ -211,39 +214,10 @@ def seed_all():
             customer_objs.append(cust)
         db.flush()
 
-        # ── Emails ────────────────────────────────────────────────────────────
-        print("  → Seeding emails...")
-        categories   = ["sales_inquiry", "support_request", "demo_request", "pricing_question", "complaint", "general_inquiry"]
-        sentiments   = ["positive", "neutral", "negative"]
-        for i in range(25):
-            contact  = random.choice(contact_objs)
-            subj     = random.choice(EMAIL_SUBJECTS)
-            body_txt = random.choice(EMAIL_BODIES)
-            direction = random.choice(["inbound", "outbound"])
-            email = Email(
-                id=str(uuid.uuid4()),
-                contact_id=contact.id,
-                from_email=contact.email if direction == "inbound" else f"rep{i}@yourcompany.com",
-                to_email=f"rep{i}@yourcompany.com" if direction == "inbound" else contact.email,
-                subject=subj,
-                body=body_txt,
-                direction=direction,
-                sentiment=random.choice(sentiments),
-                sentiment_score=random.randint(1, 10),
-                emotion=random.choice(["neutral", "happiness", "frustration", "excitement", "anger"]),
-                category=random.choice(categories),
-                priority=random.choice(["low", "medium", "high"]),
-                draft_response="Thank you for reaching out! We'll get back to you shortly." if direction == "inbound" else None,
-                response_sent=random.choice([True, False]),
-                received_at=rand_past_date(60) if direction == "inbound" else None,
-                sent_at=rand_past_date(60) if direction == "outbound" else None,
-            )
-            db.add(email)
-        db.flush()
 
         # ── Meetings ──────────────────────────────────────────────────────────
         print("  → Seeding meetings...")
-        for i in range(15):
+        for i in range(10):
             deal      = random.choice(deal_objs)
             mt        = random.choice(MEETING_TYPES)
             sched_at  = rand_past_date(30) if random.random() > 0.4 else (datetime.utcnow() + timedelta(days=random.randint(1, 14)))
@@ -272,7 +246,7 @@ def seed_all():
         print("  → Seeding activities...")
         activity_types = ["call", "email_sent", "demo_given", "proposal_sent", "contract_sent", "check_in"]
         outcomes       = ["positive", "neutral", "follow_up_needed", "not_reached"]
-        for i in range(40):
+        for i in range(10):
             contact = random.choice(contact_objs)
             deal    = random.choice(deal_objs)
             atype   = random.choice(activity_types)
@@ -291,39 +265,11 @@ def seed_all():
             db.add(activity)
         db.flush()
 
-        # ── Agent Logs ────────────────────────────────────────────────────────
-        print("  → Seeding agent logs...")
-        agent_names  = ["LeadQualificationAgent", "EmailIntelligenceAgent", "SalesPipelineAgent",
-                        "CustomerSuccessAgent", "MeetingSchedulerAgent", "AnalyticsAgent"]
-        agent_events_types = ["lead_qualified", "email_processed", "deal_analyzed", "customer_monitored",
-                              "meeting_scheduled", "dashboard_generated"]
-        for i in range(50):
-            agent_name = random.choice(agent_names)
-            db.add(AgentLog(
-                id=str(uuid.uuid4()),
-                agent_name=agent_name,
-                activity_type=random.choice(agent_events_types),
-                details={"status": "success", "processing_time_ms": random.randint(200, 3000)},
-            ))
-
-        # ── Agent Events ──────────────────────────────────────────────────────
-        print("  → Seeding agent events...")
-        for i in range(20):
-            source = random.choice(agent_names)
-            target = random.choice([a for a in agent_names if a != source])
-            db.add(AgentEvent(
-                id=str(uuid.uuid4()),
-                event_type=random.choice(["task_request", "lead_qualified", "deal_at_risk", "churn_risk_detected"]),
-                source_agent=source,
-                target_agent=target,
-                payload={"priority": random.choice(["high", "medium"]), "data_id": str(uuid.uuid4())},
-                processed=random.choice([True, False]),
-            ))
 
         # ── Daily Metrics ─────────────────────────────────────────────────────
         print("  → Seeding daily metrics...")
         base_date = date.today() - timedelta(days=30)
-        for day_offset in range(30):
+        for day_offset in range(10):
             metric_date = base_date + timedelta(days=day_offset)
             mrr_base    = 45000 + day_offset * 200
             avg_csat: float = int(random.uniform(3.5, 4.8) * 10) / 10.0

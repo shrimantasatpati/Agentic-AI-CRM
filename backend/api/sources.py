@@ -131,7 +131,7 @@ async def seed_production_data(db: Session = Depends(get_db)):
         db.flush()
 
         # 2. Seed Companies (10)
-        from .analytics import COMPANIES as SEED_COMPANIES # Reuse if possible or define locally
+        # Local definition for robustness
         
         # Local definition for robustness
         COMPANIES_LIST = [

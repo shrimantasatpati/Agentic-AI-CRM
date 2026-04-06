@@ -308,6 +308,7 @@ export default function MeetingsPage() {
       onRun={handleRun}
       error={error}
       isComplete={isComplete}
+      externalFillValues={{ attendees: Array.from(selectedContacts).join(', ') }}
       headerExtra={
         <>
           <CalendarConnectBanner />

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Mail, RefreshCw, Loader, AlertTriangle, Inbox, Check } from 'lucide-react';
+import { Mail, RefreshCw, Loader, AlertTriangle, Inbox, Check, Zap } from 'lucide-react';
 
 // ─── Colour constants ───────────────────────────────────────────────────────
 const COLOR = '#5e5ce6';
@@ -72,7 +72,7 @@ function GmailBanner({ onSynced }: { onSynced: () => void }) {
       style={{ background: connected ? 'rgba(52,199,89,0.07)' : 'rgba(94,92,230,0.07)', border: `1px solid ${connected ? 'rgba(52,199,89,0.22)' : 'rgba(94,92,230,0.2)'}` }}>
       <Mail size={14} color={connected ? '#34c759' : COLOR} />
       <p className="text-xs flex-1" style={{ color: 'var(--text-secondary)' }}>
-        Gmail {connected ? '— Connected · Sync fetches inbox → matches CRM companies/contacts → AI analyzes emails in BATCH' : '— Connect Gmail to fetch and intelligently analyze your business emails'}
+        Gmail {connected ? '— Successfully connected to your inbox.' : '— Connect your Gmail account to enable batch email analysis.'}
       </p>
       {connected ? <span className="badge badge-green flex-shrink-0">Connected</span> : (
         <button onClick={handleConnect} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold flex-shrink-0"
@@ -145,7 +145,7 @@ export default function EmailPage() {
           <h1 className="section-title" style={{ fontSize: 20 }}>Email Intelligence</h1>
           <span className="badge badge-blue ml-2">AI Batch Agent</span>
         </div>
-        <p className="section-subtitle" style={{ fontSize: 12 }}>
+        <p className="section-subtitle">
           Gmail — Connected · Sync fetches inbox → matches CRM companies/contacts → AI analyzes emails in BATCH
         </p>
       </div>
@@ -185,7 +185,23 @@ export default function EmailPage() {
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold"
           style={{ background: loading ? 'rgba(94,92,230,0.3)' : COLOR, color: '#fff', border: 'none', cursor: 'pointer' }}>
           {loading ? <Loader size={11} className="animate-spin" /> : <RefreshCw size={11} />}
-          {loading ? 'Refreshing…' : 'Refresh'}
+          {loading ? 'Refreshing List…' : 'Refresh'}
+        </button>
+
+        <button 
+          onClick={async () => {
+            setLoading(true);
+            try { 
+              await fetch('http://localhost:8000/api/emails/analyze-inbox', { method: 'POST' });
+              setTimeout(loadEmails, 1200);
+            } catch { /* ignore */ }
+            finally { setLoading(false); }
+          }}
+          disabled={loading || unanalyzed.length === 0}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold"
+          style={{ background: loading || unanalyzed.length === 0 ? 'rgba(52,199,89,0.3)' : '#34c759', color: '#fff', border: 'none', cursor: 'pointer' }}>
+          {loading ? <Loader size={11} className="animate-spin" /> : <Zap size={11} fill="#fff" />}
+          {unanalyzed.length > 0 ? `Analyze ${unanalyzed.length} Pending` : 'All Analyzed'}
         </button>
 
         {lastRefresh && <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Updated {lastRefresh.toLocaleTimeString()}</span>}

@@ -55,38 +55,45 @@ export default function PipelinePage() {
       .finally(() => setDealsLoading(false));
   }, []);
 
-  const handleRun = useCallback(async () => {
-    if (!selectedDeal) return;
+  const handleRun = useCallback(async (formData: Record<string, string>) => {
+    // Prioritize selected deal ID if the name matches, otherwise use manual input
+    const targetId = selectedDeal && formData.deal_name === selectedDeal.name ? selectedDeal.id : formData.deal_id;
+    const targetName = formData.deal_name || (selectedDeal ? selectedDeal.name : 'Unknown Deal');
+
     setError(null);
     setIsComplete(false);
     setCheckedActions(new Set());
 
-    const res = await fetch(`http://localhost:8000/api/agents/analyze-deal/${selectedDeal.id}/sync`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
-    }).then(r => r.ok ? r.json() : null).catch(() => null);
+    // If we have a targetId, we can run sync. Otherwise simulation string.
+    let res = null;
+    if (targetId) {
+      res = await fetch(`http://localhost:8000/api/agents/analyze-deal/${targetId}/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      }).then(r => r.ok ? r.json() : null).catch(() => null);
+    }
 
     if (res) {
       setResult({
-        deal_id: selectedDeal.id,
-        deal_name: selectedDeal.name,
-        health_score: res.health_score ?? selectedDeal.health_score,
+        deal_id: targetId,
+        deal_name: targetName,
+        health_score: res.health_score ?? (selectedDeal?.health_score || 50),
         close_probability: res.close_probability ?? 50,
-        is_stalled: res.is_stalled ?? selectedDeal.is_stalled,
+        is_stalled: res.is_stalled ?? (selectedDeal?.is_stalled || false),
         risk_factors: res.risk_factors ?? [],
         next_actions: res.next_actions ?? [],
         forecast_close_date: res.forecast_close_date ?? '—',
         recommendations: res.recommendations ?? [],
       });
     } else {
-      setError('Agent did not return a result — check backend logs');
+      setError('Agent did not return a result for the provided Deal. Please verify inputs or use Mock Data.');
       setResult({
-        deal_id: selectedDeal.id,
-        deal_name: selectedDeal.name,
-        health_score: selectedDeal.health_score,
+        deal_id: targetId || 'manual-deal',
+        deal_name: targetName,
+        health_score: 50,
         close_probability: 50,
-        is_stalled: selectedDeal.is_stalled,
+        is_stalled: false,
         risk_factors: [],
         next_actions: ['Connect backend and re-run agent'],
         forecast_close_date: '—',
@@ -104,12 +111,8 @@ export default function PipelinePage() {
     });
   };
 
-  // Wrap handleRun for AgentPageLayout (which passes formData but we ignore it)
-  const handleRunWrapped = useCallback(async (_fd: Record<string, string>) => {
-    await handleRun();
-  }, [handleRun]);
-
   const dealSelector = (
+
     <div className="apple-card mb-4 overflow-hidden" style={{ padding: 0 }}>
       <div className="px-4 py-3 border-b flex items-center justify-between" style={{ borderColor: 'var(--border-primary)' }}>
         <div className="flex items-center gap-2">
@@ -177,107 +180,131 @@ export default function PipelinePage() {
   );
 
   return (
-    <AgentPageLayout
-      agentId="SalesPipelineAgent"
-      agentName="Sales Pipeline"
-      agentDescription="Analyzes deal health, predicts close probability, detects stall conditions, and generates actionable recommendations — using live CRM deal data."
-      agentColor={COLOR}
-      agentEmoji="💰"
-      formFields={[]}
-      defaultValues={{}}
-      examples={[]}
-      steps={STEPS}
-      onRun={handleRunWrapped}
-      isComplete={isComplete}
-      isReady={!!selectedDeal}
-      headerExtra={dealSelector}
-      resultNode={result && (
-        <div className="space-y-4">
-          {/* Deal title */}
-          <div className="apple-card py-2 px-3" style={{ borderColor: `${COLOR}30` }}>
-            <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Analyzing</p>
-            <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{result.deal_name}</p>
-          </div>
-
-          {/* Stalled Banner */}
-          {result.is_stalled && (
-            <div className="flex items-center gap-3 p-3 rounded-xl"
-              style={{ background: 'rgba(255,59,48,0.1)', border: '1px solid rgba(255,59,48,0.25)' }}>
-              <AlertTriangle size={16} color="#ff3b30" />
-              <span className="font-semibold text-sm" style={{ color: '#ff3b30' }}>Deal Stalled — No Recent Activity</span>
+    <div className="max-w-6xl">
+      <AgentPageLayout
+        agentId="SalesPipelineAgent"
+        agentName="Sales Pipeline"
+        agentDescription="Analyzes deal health, predicts close probability, detects stall conditions, and generates actionable recommendations — using live CRM deal data."
+        agentColor={COLOR}
+        agentEmoji="💰"
+        formFields={[
+          { key: 'deal_id', label: 'Deal ID (Optional)', placeholder: '12345...' },
+          { key: 'deal_name', label: 'Deal Name', placeholder: 'Enterprise Expansion' }
+        ]}
+        defaultValues={{ deal_id: '', deal_name: '' }}
+        examples={[]}
+        steps={STEPS}
+        onRun={handleRun}
+        isComplete={isComplete}
+        isReady={!!selectedDeal}
+        externalFillValues={selectedDeal ? {
+          deal_id: selectedDeal.id,
+          deal_name: selectedDeal.name,
+        } : null}
+        headerExtra={dealSelector}
+        resultNode={result && (
+          <div className="space-y-4">
+            {/* Deal title */}
+            <div className="apple-card py-2 px-3" style={{ borderColor: `${COLOR}30` }}>
+              <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Analyzing</p>
+              <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{result.deal_name}</p>
             </div>
-          )}
 
-          {/* Health + Close probability */}
-          <div className="apple-card flex gap-6 items-center">
-            <div className="text-center">
-              <ScoreGauge score={result.health_score} size={110} label="Health" />
-            </div>
-            <div className="flex-1">
-              <div className="mb-3">
-                <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Close Probability</p>
-                <div className="flex items-center gap-2">
-                  <span style={{ fontSize: 36, fontWeight: 800, color: 'var(--text-primary)' }}>{result.close_probability}%</span>
-                  <TrendingDown size={20} color="#ff3b30" />
+            {/* Stalled Banner */}
+            {result.is_stalled && (
+              <div className="flex items-center gap-3 p-3 rounded-xl"
+                style={{ background: 'rgba(255,59,48,0.1)', border: '1px solid rgba(255,59,48,0.25)' }}>
+                <AlertTriangle size={16} color="#ff3b30" />
+                <span className="font-semibold text-sm" style={{ color: '#ff3b30' }}>Deal Stalled — No Recent Activity</span>
+              </div>
+            )}
+
+            {/* Health + Close probability */}
+            <div className="apple-card flex gap-6 items-center">
+              <div className="text-center">
+                <ScoreGauge score={result.health_score} size={110} label="Health" />
+              </div>
+              <div className="flex-1">
+                <div className="mb-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Close Probability</p>
+                  <div className="flex items-center gap-2">
+                    <span style={{ fontSize: 36, fontWeight: 800, color: 'var(--text-primary)' }}>{result.close_probability}%</span>
+                    <TrendingDown size={20} color="#ff3b30" />
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Forecast Close Date</p>
+                  <div className="flex items-center gap-2">
+                    <Calendar size={14} color={COLOR} />
+                    <span className="badge badge-green">{result.forecast_close_date}</span>
+                  </div>
                 </div>
               </div>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Forecast Close Date</p>
-                <div className="flex items-center gap-2">
-                  <Calendar size={14} color={COLOR} />
-                  <span className="badge badge-green">{result.forecast_close_date}</span>
+            </div>
+
+            {/* Risk Factors */}
+            {result.risk_factors?.length > 0 && (
+              <div className="apple-card">
+                <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Risk Factors</p>
+                <div className="space-y-2">
+                  {result.risk_factors.map((r, i) => (
+                    <div key={i} className="flex items-start gap-2 p-2 rounded-lg"
+                      style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-secondary)' }}>
+                      <AlertTriangle size={14} color="#ff9500" style={{ flexShrink: 0, marginTop: 2 }} />
+                      <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{r}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
-            </div>
-          </div>
+            )}
 
-          {/* Risk Factors */}
-          {result.risk_factors?.length > 0 && (
+            {/* Recommendations */}
             <div className="apple-card">
-              <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Risk Factors</p>
+              <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>AI Recommendations</p>
               <div className="space-y-2">
-                {result.risk_factors.map((r, i) => (
-                  <div key={i} className="flex items-start gap-2 p-2 rounded-lg"
-                    style={{ background: 'rgba(255,59,48,0.06)', border: '1px solid rgba(255,59,48,0.15)' }}>
-                    <AlertTriangle size={14} color="#ff3b30" className="flex-shrink-0 mt-0.5" />
+                {result.recommendations.map((r, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: '#34c75920' }}>
+                      <Check size={10} color="#34c759" />
+                    </div>
                     <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{r}</span>
                   </div>
                 ))}
               </div>
             </div>
-          )}
 
-          {/* Next Actions */}
-          {result.next_actions?.length > 0 && (
-            <div className="apple-card">
-              <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Next Actions</p>
-              <div className="space-y-2">
-                {result.next_actions.map((a, i) => (
-                  <button key={i}
-                    className="flex items-center gap-3 w-full text-left p-3 rounded-xl transition-all"
-                    onClick={() => toggleAction(i)}
-                    style={{
-                      background: checkedActions.has(i) ? 'rgba(52,199,89,0.08)' : 'var(--bg-input)',
-                      border: `1px solid ${checkedActions.has(i) ? 'rgba(52,199,89,0.25)' : 'var(--border-secondary)'}`,
-                    }}>
-                    <div className="w-4 h-4 rounded flex items-center justify-center flex-shrink-0"
-                      style={{ background: checkedActions.has(i) ? COLOR : 'transparent', border: `1.5px solid ${checkedActions.has(i) ? COLOR : 'var(--text-tertiary)'}` }}>
-                      {checkedActions.has(i) && <Check size={10} color="#fff" />}
-                    </div>
-                    <span className="text-sm" style={{ color: checkedActions.has(i) ? 'var(--text-tertiary)' : 'var(--text-secondary)', textDecoration: checkedActions.has(i) ? 'line-through' : 'none' }}>
-                      {a}
-                    </span>
-                  </button>
-                ))}
+            {/* Next Actions */}
+            {result.next_actions?.length > 0 && (
+              <div className="apple-card">
+                <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Suggested Next Actions</p>
+                <div className="space-y-2">
+                  {result.next_actions.map((a, i) => (
+                    <button key={i}
+                      className="flex items-center gap-3 w-full text-left p-3 rounded-xl transition-all"
+                      onClick={() => toggleAction(i)}
+                      style={{
+                        background: checkedActions.has(i) ? 'rgba(52,199,89,0.08)' : 'var(--bg-input)',
+                        border: `1px solid ${checkedActions.has(i) ? 'rgba(52,199,89,0.25)' : 'var(--border-secondary)'}`,
+                      }}>
+                      <div className="w-4 h-4 rounded flex items-center justify-center flex-shrink-0"
+                        style={{ background: checkedActions.has(i) ? COLOR : 'transparent', border: `1.5px solid ${checkedActions.has(i) ? COLOR : 'var(--text-tertiary)'}` }}>
+                        {checkedActions.has(i) && <Check size={10} color="#fff" />}
+                      </div>
+                      <span className="text-sm" style={{ color: checkedActions.has(i) ? 'var(--text-tertiary)' : 'var(--text-secondary)', textDecoration: checkedActions.has(i) ? 'line-through' : 'none' }}>
+                        {a}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <div className="divider" />
+                <Link href="/meetings">
+                  <button className="btn-secondary w-full"><Calendar size={14} /> Schedule Follow-up Meeting</button>
+                </Link>
               </div>
-              <div className="divider" />
-              <Link href="/meetings">
-                <button className="btn-secondary w-full"><Calendar size={14} /> Schedule Follow-up Meeting</button>
-              </Link>
-            </div>
-          )}
-        </div>
-      )}
-    />
+            )}
+          </div>
+        )}
+      />
+    </div>
   );
 }

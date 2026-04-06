@@ -47,17 +47,24 @@ interface AgentPageLayoutProps {
   error?: string | null;
   onRetry?: () => void;
   agentId?: string; // Backend name for dynamic examples (e.g. LeadQualificationAgent)
+  externalFillValues?: Record<string, string> | null;
 }
 
 export default function AgentPageLayout({
   agentName, agentDescription, agentColor, agentEmoji,
   formFields, defaultValues, examples, steps,
-  onRun, resultNode, isComplete, error, onRetry, headerExtra, isReady, agentId
+  onRun, resultNode, isComplete, error, onRetry, headerExtra, isReady, agentId, externalFillValues
 }: AgentPageLayoutProps) {
   const [formData, setFormData] = useState<Record<string, string>>(defaultValues);
   const [running, setRunning]   = useState(false);
   const [totalMs, setTotalMs]   = useState<number | null>(null);
   const [dynamicExamples, setDynamicExamples] = useState<ExampleInput[]>([]);
+
+  useEffect(() => {
+    if (externalFillValues) {
+      setFormData((prev) => ({ ...prev, ...externalFillValues }));
+    }
+  }, [externalFillValues]);
 
   // Fetch real recent inputs to use as examples
   useEffect(() => {

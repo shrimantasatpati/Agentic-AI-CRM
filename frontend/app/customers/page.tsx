@@ -50,29 +50,33 @@ export default function CustomersPage() {
       .then(r => r.ok ? r.json() : [])
       .then((data: CustomerOption[]) => {
         setCustomers(data);
-        // Removed auto-selection to force user choice
       })
       .catch(() => {})
       .finally(() => setCustomersLoading(false));
   }, []);
 
-  const handleRun = useCallback(async (_fd: Record<string, string>) => {
-    if (!selectedCustomer) return;
+  const handleRun = useCallback(async (formData: Record<string, string>) => {
+    const targetId = selectedCustomer && formData.company_name === selectedCustomer.company_name ? selectedCustomer.id : formData.customer_id;
+    const targetName = formData.company_name || (selectedCustomer ? selectedCustomer.company_name : 'Unknown Customer');
+
     setError(null);
     setIsComplete(false);
 
-    const res = await fetch(`http://localhost:8000/api/agents/monitor-customer/${selectedCustomer.id}/sync`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
-    }).then(r => r.ok ? r.json() : null).catch(() => null);
+    let res = null;
+    if (targetId) {
+      res = await fetch(`http://localhost:8000/api/agents/monitor-customer/${targetId}/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      }).then(r => r.ok ? r.json() : null).catch(() => null);
+    }
 
     if (res) {
-      const healthScore = res.health_score ?? selectedCustomer.health_score;
-      const churnLevel  = res.churn_risk?.level ?? selectedCustomer.churn_risk ?? 'low';
+      const healthScore = res.health_score ?? (selectedCustomer?.health_score || 50);
+      const churnLevel  = res.churn_risk?.level ?? (selectedCustomer?.churn_risk || 'medium');
       setResult({
-        customer_id: selectedCustomer.id,
-        company_name: selectedCustomer.company_name,
+        customer_id: targetId,
+        company_name: targetName,
         health_score: healthScore,
         churn_risk: {
           level: (churnLevel as 'low' | 'medium' | 'high' | 'critical'),
@@ -90,12 +94,12 @@ export default function CustomersPage() {
     } else {
       setError('Agent call failed — using stored CRM data');
       setResult({
-        customer_id: selectedCustomer.id,
-        company_name: selectedCustomer.company_name,
-        health_score: selectedCustomer.health_score,
+        customer_id: targetId || 'manual-customer',
+        company_name: targetName,
+        health_score: 50,
         churn_risk: {
-          level: (selectedCustomer.churn_risk as 'low' | 'medium' | 'high' | 'critical'),
-          probability: Math.max(0, 100 - selectedCustomer.health_score),
+          level: 'medium',
+          probability: 50,
           factors: [],
         },
         engagement: { logins_per_week: 0, feature_adoption_pct: 0, last_login: '—' },
@@ -108,14 +112,14 @@ export default function CustomersPage() {
 
   const customerSelector = (
     <div className="apple-card mb-4 overflow-hidden" style={{ padding: 0 }}>
-      <div className="px-4 py-3 border-b flex items-center justify-between" style={{ borderColor: 'var(--border-primary)' }}>
+      <div className="px-4 py-3 border-b flex items-center justify-between bg-[var(--bg-secondary)]" style={{ borderColor: 'var(--border-primary)' }}>
         <div className="flex items-center gap-2">
-          <Users size={14} color={COLOR} />
+          <Heart size={14} color={COLOR} />
           <h3 className="font-700 text-sm" style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
-            Select Active Customer
+            Select Customer from CRM {!customersLoading && <span className="ml-1 opacity-60 font-medium">({customers.length} found)</span>}
           </h3>
         </div>
-        {!customersLoading && <span className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest">{customers.length} found</span>}
+        {!customersLoading && <span className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest">Health Score</span>}
       </div>
       
       {customersLoading ? (
@@ -157,16 +161,14 @@ export default function CustomersPage() {
                     <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: CHURN_COLOR[c.churn_risk] }}>{c.churn_risk} risk</span>
                     <span className="text-[10px] text-[var(--text-tertiary)]">·</span>
                     <span className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>${(c.mrr ?? 0).toLocaleString()}/mo</span>
-                    <span className="text-[10px] text-[var(--text-tertiary)]">·</span>
-                    <span className="text-[10px] font-medium" style={{ color: 'var(--text-tertiary)' }}>{c.plan}</span>
                   </div>
                 </div>
-                <div className="text-right flex-shrink-0">
-                   <div className="text-[11px] font-bold" style={{ color: c.health_score >= 70 ? '#34c759' : c.health_score >= 40 ? '#ff9500' : '#ff3b30' }}>
-                     {c.health_score}%
-                   </div>
-                   <div className="text-[9px] text-[var(--text-tertiary)] font-bold uppercase">Health</div>
-                </div>
+                <div className="text-right flex-shrink-0" style={{ width: 80 }}>
+                    <div className="text-[11px] font-bold" style={{ color: c.health_score >= 70 ? '#34c759' : c.health_score >= 40 ? '#ff9500' : '#ff3b30' }}>
+                      {c.health_score}% Match
+                    </div>
+                    <div className="text-[9px] text-[var(--text-tertiary)] font-bold uppercase">Health</div>
+                 </div>
               </div>
             </button>
           ))}
@@ -176,128 +178,125 @@ export default function CustomersPage() {
   );
 
   return (
-    <AgentPageLayout
-      agentId="CustomerSuccessAgent"
-      agentName="Customer Success"
-      agentDescription="Monitors customer health from CRM data, detects churn risk, analyzes engagement metrics, and generates AI-powered retention recommendations."
-      agentColor={COLOR}
-      agentEmoji="🎉"
-      formFields={[]}
-      defaultValues={{}}
-      examples={[]}
-      steps={STEPS}
-      onRun={handleRun}
-      error={error}
-      isComplete={isComplete}
-      isReady={!!selectedCustomer}
-      headerExtra={customerSelector}
-      resultNode={result && (
-        <div className="space-y-4">
-          {/* Company title */}
-          <div className="apple-card py-2 px-3" style={{ borderColor: `${COLOR}30` }}>
-            <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Analyzing</p>
-            <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{result.company_name}</p>
-          </div>
-
-          {/* Health + Churn Risk */}
-          <div className="apple-card flex gap-6 items-center">
-            <ScoreGauge score={result.health_score} size={110} label="Health" />
-            <div className="flex-1">
-              <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Churn Risk</p>
-              <div className="flex items-center gap-3 mb-2">
-                <span className={`badge ${churnBadge[result.churn_risk.level]}`}
-                  style={{ fontSize: 16, padding: '6px 16px', fontWeight: 700, letterSpacing: '0.05em' }}>
-                  {result.churn_risk.level.toUpperCase()}
-                </span>
-                <span style={{ fontSize: 28, fontWeight: 800, color: CHURN_COLOR[result.churn_risk.level] }}>
-                  {result.churn_risk.probability}%
-                </span>
-              </div>
-              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Churn probability this quarter</p>
+    <div className="max-w-6xl">
+      <AgentPageLayout
+        agentId="CustomerSuccessAgent"
+        agentName="Customer Success"
+        agentDescription="Monitors customer health from CRM data, detects churn risk, analyzes engagement metrics, and generates AI-powered retention recommendations."
+        agentColor={COLOR}
+        agentEmoji="🎉"
+        formFields={[
+          { key: 'customer_id', label: 'Customer ID (Optional)', placeholder: '12345...' },
+          { key: 'company_name', label: 'Company Name', placeholder: 'Acme Corp' }
+        ]}
+        defaultValues={{ customer_id: '', company_name: '' }}
+        examples={[]}
+        steps={STEPS}
+        onRun={handleRun}
+        error={error}
+        isComplete={isComplete}
+        isReady={!!selectedCustomer}
+        externalFillValues={selectedCustomer ? {
+          customer_id: selectedCustomer.id,
+          company_name: selectedCustomer.company_name,
+        } : null}
+        headerExtra={customerSelector}
+        resultNode={result && (
+          <div className="space-y-4">
+            <div className="apple-card py-2 px-3" style={{ borderColor: `${COLOR}30` }}>
+              <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Analyzing</p>
+              <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{result.company_name}</p>
             </div>
-          </div>
 
-          {/* Engagement Metrics */}
-          <div className="apple-card">
-            <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Engagement Metrics</p>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="text-center p-3 rounded-xl" style={{ background: 'var(--bg-input)' }}>
-                <p style={{ fontSize: 22, fontWeight: 800, color: '#ff3b30' }}>{result.engagement.logins_per_week}/wk</p>
-                <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Logins</p>
-              </div>
-              <div className="text-center p-3 rounded-xl" style={{ background: 'var(--bg-input)' }}>
-                <p style={{ fontSize: 22, fontWeight: 800, color: '#ff9500' }}>{result.engagement.feature_adoption_pct}%</p>
-                <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Feature Adoption</p>
-              </div>
-              <div className="text-center p-3 rounded-xl" style={{ background: 'var(--bg-input)' }}>
-                <p style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>{result.engagement.last_login}</p>
-                <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Last Login</p>
+            <div className="apple-card flex gap-6 items-center">
+              <ScoreGauge score={result.health_score} size={110} label="Health" />
+              <div className="flex-1">
+                <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Churn Risk</p>
+                <div className="flex items-center gap-3 mb-2">
+                  <span className={`badge ${churnBadge[result.churn_risk.level]}`}
+                    style={{ fontSize: 16, padding: '6px 16px', fontWeight: 700, letterSpacing: '0.05em' }}>
+                    {result.churn_risk.level.toUpperCase()}
+                  </span>
+                  <span style={{ fontSize: 28, fontWeight: 800, color: CHURN_COLOR[result.churn_risk.level] }}>
+                    {result.churn_risk.probability}%
+                  </span>
+                </div>
+                <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Churn probability this quarter</p>
               </div>
             </div>
-          </div>
 
-          {/* Risk Factors */}
-          {result.churn_risk.factors?.length > 0 && (
             <div className="apple-card">
-              <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Risk Factors</p>
-              <div className="space-y-2">
-                {result.churn_risk.factors.map((f, i) => (
-                  <div key={i} className="flex items-start gap-2 p-2 rounded-lg"
-                    style={{ background: 'rgba(255,59,48,0.06)', border: '1px solid rgba(255,59,48,0.15)' }}>
-                    <AlertTriangle size={13} color="#ff3b30" className="flex-shrink-0 mt-0.5" />
-                    <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{f}</span>
-                  </div>
-                ))}
+              <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Engagement Metrics</p>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="text-center p-3 rounded-xl" style={{ background: 'var(--bg-input)' }}>
+                  <p style={{ fontSize: 22, fontWeight: 800, color: '#ff3b30' }}>{result.engagement.logins_per_week}/wk</p>
+                  <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Logins</p>
+                </div>
+                <div className="text-center p-3 rounded-xl" style={{ background: 'var(--bg-input)' }}>
+                  <p style={{ fontSize: 22, fontWeight: 800, color: '#ff9500' }}>{result.engagement.feature_adoption_pct}%</p>
+                  <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Feature Adoption</p>
+                </div>
+                <div className="text-center p-3 rounded-xl" style={{ background: 'var(--bg-input)' }}>
+                  <p style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>{result.engagement.last_login}</p>
+                  <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Last Login</p>
+                </div>
               </div>
             </div>
-          )}
 
-          {/* Upsell Opportunities */}
-          {result.upsell_opportunities?.length > 0 && (
-            <div className="apple-card">
-              <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Upsell Opportunities</p>
-              <div className="space-y-3">
-                {result.upsell_opportunities.map((u, i) => (
-                  <div key={i} className="p-3 rounded-xl" style={{ background: 'var(--bg-input)', border: '1px solid var(--border-secondary)' }}>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="badge badge-teal">{u.type}</span>
-                      <span className="text-xs ml-auto" style={{ color: 'var(--text-tertiary)' }}>
-                        Confidence: {Math.round((u.confidence ?? 0) * 100)}%
-                      </span>
-                      <span className="text-xs font-semibold" style={{ color: COLOR }}>+${u.estimated_value}/mo</span>
+            {result.churn_risk.factors?.length > 0 && (
+              <div className="apple-card">
+                <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Negative Churn Signals</p>
+                <div className="space-y-2">
+                  {result.churn_risk.factors.map((s, i) => (
+                    <div key={i} className="flex items-start gap-2 p-2 rounded-lg"
+                      style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-secondary)' }}>
+                      <AlertTriangle size={14} color="#ff3b30" style={{ flexShrink: 0, marginTop: 2 }} />
+                      <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{s}</span>
                     </div>
-                    <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{u.description}</p>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Recommended Actions */}
-          {result.recommended_actions?.length > 0 && (
-            <div className="apple-card">
-              <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Recommended Actions</p>
-              <div className="space-y-2">
-                {result.recommended_actions.map((a, i) => (
-                  <div key={i} className="flex items-start gap-3 p-3 rounded-xl"
-                    style={{
-                      background: a.priority === 'high' ? 'rgba(255,59,48,0.05)' : 'var(--bg-input)',
-                      border: `1px solid ${a.priority === 'high' ? 'rgba(255,59,48,0.15)' : 'var(--border-secondary)'}`,
-                    }}>
-                    <span className={`badge badge-${a.priority === 'high' ? 'red' : a.priority === 'medium' ? 'orange' : 'gray'} flex-shrink-0`}>
-                      {a.priority}
-                    </span>
-                    <span className="text-sm flex-1" style={{ color: 'var(--text-secondary)' }}>{a.action}</span>
-                    {a.due_date && (
-                      <span className="text-xs flex-shrink-0" style={{ color: 'var(--text-tertiary)' }}>{a.due_date}</span>
-                    )}
-                  </div>
-                ))}
+            {result.upsell_opportunities?.length > 0 && (
+              <div className="apple-card">
+                <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Upsell Opportunities</p>
+                <div className="space-y-3">
+                  {result.upsell_opportunities.map((u, i) => (
+                    <div key={i} className="p-3 rounded-xl" style={{ background: 'var(--bg-input)', border: '1px solid var(--border-secondary)' }}>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="badge badge-teal">{u.type}</span>
+                        <span className="text-xs ml-auto" style={{ color: 'var(--text-tertiary)' }}>Confidence: {Math.round((u.confidence ?? 0) * 100)}%</span>
+                        <span className="text-xs font-semibold" style={{ color: COLOR }}>+${u.estimated_value}/mo</span>
+                      </div>
+                      <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{u.description}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
-        </div>
-      )}
-    />
+            )}
+
+            {result.recommended_actions?.length > 0 && (
+              <div className="apple-card">
+                <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Recommended Actions</p>
+                <div className="space-y-2">
+                  {result.recommended_actions.map((a, i) => (
+                    <div key={i} className="flex items-start gap-3 p-3 rounded-xl"
+                      style={{
+                        background: a.priority === 'high' ? 'rgba(255,59,48,0.05)' : 'var(--bg-input)',
+                        border: `1px solid ${a.priority === 'high' ? 'rgba(255,59,48,0.15)' : 'var(--border-secondary)'}`,
+                      }}>
+                      <span className={`badge badge-${a.priority === 'high' ? 'red' : a.priority === 'medium' ? 'orange' : 'gray'} flex-shrink-0`}>{a.priority}</span>
+                      <span className="text-sm flex-1" style={{ color: 'var(--text-secondary)' }}>{a.action}</span>
+                      {a.due_date && <span className="text-xs flex-shrink-0" style={{ color: 'var(--text-tertiary)' }}>{a.due_date}</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      />
+    </div>
   );
 }

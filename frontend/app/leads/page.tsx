@@ -137,14 +137,14 @@ export default function LeadsPage() {
 
   const leadSelector = (
     <div className="apple-card mb-4 overflow-hidden" style={{ padding: 0 }}>
-      <div className="px-4 py-3 border-b flex items-center justify-between" style={{ borderColor: 'var(--border-primary)' }}>
+      <div className="px-4 py-3 border-b flex items-center justify-between bg-[var(--bg-secondary)]" style={{ borderColor: 'var(--border-primary)' }}>
         <div className="flex items-center gap-2">
           <Users size={14} color={COLOR} />
           <h3 className="font-700 text-sm" style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
-            Select Lead from CRM
+            Select Lead from CRM {!leadsLoading && <span className="ml-1 opacity-60 font-medium">({leads.length} found)</span>}
           </h3>
         </div>
-        {!leadsLoading && <span className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest">{leads.length} leads</span>}
+        {!leadsLoading && <span className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest">Lead Fit Score</span>}
       </div>
       
       {leadsLoading ? (
@@ -188,12 +188,12 @@ export default function LeadsPage() {
                     <span className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>{l.company_name || 'Individual'}</span>
                   </div>
                 </div>
-                <div className="text-right flex-shrink-0">
-                   <div className="text-[11px] font-bold" style={{ color: l.lead_score >= 70 ? '#34c759' : l.lead_score >= 40 ? '#ff9500' : '#ff3b30' }}>
-                     {l.lead_score}%
-                   </div>
-                   <div className="text-[9px] text-[var(--text-tertiary)] font-bold uppercase">Fit</div>
-                </div>
+                 <div className="text-right flex-shrink-0" style={{ width: 60 }}>
+                    <div className="text-[11px] font-bold" style={{ color: l.lead_score >= 70 ? '#34c759' : l.lead_score >= 40 ? '#ff9500' : '#ff3b30' }}>
+                      {l.lead_score}% Match
+                    </div>
+                    <div className="text-[9px] text-[var(--text-tertiary)] font-bold uppercase">Fit Score</div>
+                 </div>
               </div>
             </button>
           ))}
@@ -222,105 +222,103 @@ export default function LeadsPage() {
           </div>
         </div>
       )}
-    <AgentPageLayout
-      agentId="LeadQualificationAgent"
-      agentName="Lead Qualification"
-      agentDescription="Scores, enriches, and routes incoming leads using AI-powered analysis and buying signal detection."
-      agentColor={COLOR}
-      agentEmoji="🎯"
-      formFields={[
-        { key: 'email', label: 'Email Address', type: 'email', placeholder: 'cto@company.com' },
-        { key: 'first_name', label: 'First Name', placeholder: 'John' },
-        { key: 'last_name', label: 'Last Name', placeholder: 'Smith' },
-        { key: 'company_name', label: 'Company', placeholder: 'Acme Corp' },
-        { key: 'job_title', label: 'Job Title', placeholder: 'VP of Sales' },
-        { key: 'message', label: 'Message / Notes', type: 'textarea', placeholder: 'Any context about the lead...', rows: 3 },
-      ]}
-      defaultValues={EXAMPLES[0].data}
-      examples={EXAMPLES}
-      steps={STEPS}
-      onRun={handleRun}
-      error={error}
-      isComplete={isComplete}
-      isReady={!!selectedLead}
-      headerExtra={leadSelector}
-      resultNode={result && (
-        <div className="space-y-4">
-          {/* Score row */}
-          <div className="apple-card flex items-center gap-6">
-            <ScoreGauge score={result.score} size={120} label="Score" />
-            <div className="flex-1">
-              <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Score Breakdown</p>
-              <ResponsiveContainer width="100%" height={90}>
-                <BarChart data={scoreData} layout="vertical" margin={{ left: 0, right: 16, top: 0, bottom: 0 }}>
-                  <XAxis type="number" domain={[0, 30]} tick={false} axisLine={false} />
-                  <YAxis dataKey="name" type="category" tick={{ fontSize: 11, fill: 'var(--text-secondary)' }} axisLine={false} tickLine={false} width={100} />
-                  <Bar dataKey="value" fill={COLOR} radius={[0, 4, 4, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+    <div className="max-w-6xl">
+      <AgentPageLayout
+        agentId="LeadQualificationAgent"
+        agentName="Smart Lead Qualification"
+        agentDescription="Scores, enriches, and routes incoming leads using AI-powered analysis and buying signal detection."
+        agentColor={COLOR}
+        agentEmoji="🎯"
+        formFields={[
+          { key: 'email', label: 'Email Address', placeholder: 'lead@company.com' },
+          { key: 'first_name', label: 'First Name', placeholder: 'John' },
+          { key: 'last_name', label: 'Last Name', placeholder: 'Doe' },
+          { key: 'company_name', label: 'Company (optional)', placeholder: 'Acme Corp' },
+        ]}
+        defaultValues={{ email: '', first_name: '', last_name: '', company_name: '' }}
+        examples={EXAMPLES}
+        steps={STEPS}
+        onRun={handleRun}
+        error={error}
+        isComplete={isComplete}
+        isReady={!!selectedLead}
+        externalFillValues={selectedLead ? {
+          email: selectedLead.email,
+          first_name: selectedLead.first_name,
+          last_name: selectedLead.last_name,
+          company_name: selectedLead.company_name || '',
+        } : null}
+        headerExtra={leadSelector}
+        resultNode={result && (
+          <div className="space-y-4">
+            {/* Score row */}
+            <div className="apple-card flex items-center gap-6">
+              <ScoreGauge score={result.score} size={120} label="Score" />
+              <div className="flex-1">
+                <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Score Breakdown</p>
+                <ResponsiveContainer width="100%" height={90}>
+                  <BarChart data={scoreData} layout="vertical" margin={{ left: 0, right: 16, top: 0, bottom: 0 }}>
+                    <XAxis type="number" domain={[0, 30]} tick={false} axisLine={false} />
+                    <YAxis dataKey="name" type="category" tick={{ fontSize: 11, fill: 'var(--text-secondary)' }} axisLine={false} tickLine={false} width={100} />
+                    <Bar dataKey="value" fill={COLOR} radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             </div>
-          </div>
 
-          {/* Enriched data + routing */}
-          <div className="grid grid-cols-2 gap-4">
+            {/* Enriched data + routing */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="apple-card">
+                <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Enriched Data</p>
+                <div className="space-y-2">
+                  {Object.entries(result.enriched_data).map(([k, v]) => (
+                    <div key={k} className="flex gap-2">
+                      <span className="text-xs" style={{ color: 'var(--text-tertiary)', minWidth: 80, textTransform: 'capitalize' }}>{k.replace('_', ' ')}</span>
+                      <span className="badge badge-blue">{String(v)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="apple-card">
+                <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Routing Decision</p>
+                <div className="flex items-center gap-3 mb-3">
+                  <div className={`badge badge-${result.routing.priority === 'high' ? 'red' : 'orange'}`} style={{ fontSize: 13, padding: '4px 12px' }}>
+                    {result.routing.priority.toUpperCase()}
+                  </div>
+                  <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{result.routing.team}</span>
+                </div>
+                <div className="p-3 rounded-lg bg-[var(--bg-tertiary)] border border-[var(--border-secondary)]">
+                  <p className="text-xs font-bold uppercase mb-1" style={{ color: 'var(--text-tertiary)' }}>Next Action</p>
+                  <p className="text-xs" style={{ color: 'var(--text-secondary)', lineHeight: 1.4 }}>{result.routing.recommended_action}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Buying Signals */}
             <div className="apple-card">
-              <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Enriched Data</p>
+              <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Buying Signals Detected</p>
               <div className="space-y-2">
-                {Object.entries(result.enriched_data).map(([k, v]) => (
-                  <div key={k} className="flex gap-2">
-                    <span className="text-xs" style={{ color: 'var(--text-tertiary)', minWidth: 80, textTransform: 'capitalize' }}>{k.replace('_', ' ')}</span>
-                    <span className="badge badge-blue">{String(v)}</span>
+                {result.signals.map((s, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: '#34c75920' }}>
+                      <Check size={10} color="#34c759" />
+                    </div>
+                    <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{s}</span>
                   </div>
                 ))}
               </div>
-            </div>
-            <div className="apple-card">
-              <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Routing Decision</p>
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>Team</span>
-                  <span className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>{result.routing.team}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>Priority</span>
-                  <span className={`badge badge-${result.routing.priority === 'high' ? 'red' : result.routing.priority === 'medium' ? 'orange' : 'gray'}`}>
-                    {result.routing.priority.toUpperCase()}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>SLA</span>
-                  <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{result.routing.sla_hours}h</span>
-                </div>
-                <div className="divider" style={{ margin: '8px 0' }} />
-                <p className="text-xs" style={{ color: 'var(--text-secondary)', lineHeight: 1.4 }}>{result.routing.recommended_action}</p>
-              </div>
+              <div className="divider" />
+              <Link href={`/email?prefill=${encodeURIComponent(result.email)}`}>
+                <button className="btn-secondary w-full">
+                  <ArrowRight size={14} />
+                  Notify Email Agent
+                </button>
+              </Link>
             </div>
           </div>
-
-          {/* Buying Signals */}
-          <div className="apple-card">
-            <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Buying Signals Detected</p>
-            <div className="space-y-2">
-              {result.signals.map((s, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <div className="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: '#34c75920' }}>
-                    <Check size={10} color="#34c759" />
-                  </div>
-                  <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{s}</span>
-                </div>
-              ))}
-            </div>
-            <div className="divider" />
-            <Link href={`/email?prefill=${encodeURIComponent(result.email)}`}>
-              <button className="btn-secondary w-full">
-                <ArrowRight size={14} />
-                Notify Email Agent
-              </button>
-            </Link>
-          </div>
-        </div>
-      )}
-    />
+        )}
+      />
+    </div>
     </>
   );
 }

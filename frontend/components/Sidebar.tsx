@@ -103,7 +103,8 @@ export default function Sidebar() {
 
   return (
     <>
-      {/* Mobile hamburger */}
+      {/* Mobile hamburger - HIDDEN per user request */}
+      {/* 
       <button
         className="fixed top-5 left-5 z-[200] md:hidden p-2 rounded-lg btn-secondary"
         onClick={() => setOpen(true)}
@@ -111,6 +112,7 @@ export default function Sidebar() {
       >
         <Menu size={20} />
       </button>
+      */}
 
       {/* Overlay */}
       {open && (
