@@ -94,15 +94,15 @@ function SmartChart({ data, type }: { data: Record<string, unknown>[]; type: Cha
       value: Number(row[valueKeys[0]]),
     }));
     return (
-      <ResponsiveContainer width="100%" height={240}>
-        <PieChart>
+      <ResponsiveContainer width="100%" height={280}>
+        <PieChart margin={{ top: 20, bottom: 20 }}>
           <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90}
             label={({ name, percent }) => `${String(name).slice(0, 14)} ${((percent ?? 0) * 100).toFixed(0)}%`}
           >
             {pieData.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
           </Pie>
           <Tooltip formatter={(v) => String(Number(v).toLocaleString())} />
-          <Legend wrapperStyle={{ fontSize: 11 }} />
+          <Legend verticalAlign="bottom" height={36} wrapperStyle={{ fontSize: 11, paddingTop: 10 }} />
         </PieChart>
       </ResponsiveContainer>
     );
@@ -111,14 +111,14 @@ function SmartChart({ data, type }: { data: Record<string, unknown>[]; type: Cha
   if (type === 'line') {
     return (
       <ResponsiveContainer width="100%" height={220}>
-        <LineChart data={displayData} margin={{ left: 0, right: 8, top: 4, bottom: 0 }}>
+        <LineChart data={displayData} margin={{ left: 0, right: 8, top: 25, bottom: 0 }}>
           <XAxis dataKey={labelKey} tick={{ fontSize: 10, fill: 'var(--text-tertiary)' }} axisLine={false} tickLine={false} />
           <YAxis tick={{ fontSize: 10, fill: 'var(--text-tertiary)' }} axisLine={false} tickLine={false} />
           <Tooltip contentStyle={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)', borderRadius: 8, fontSize: 12 }} />
           {valueKeys.map((k, i) => (
             <Line key={k} type="monotone" dataKey={k} stroke={CHART_COLORS[i % CHART_COLORS.length]} strokeWidth={2} dot={false} />
           ))}
-          {valueKeys.length > 1 && <Legend wrapperStyle={{ fontSize: 11 }} />}
+          {valueKeys.length > 1 && <Legend wrapperStyle={{ fontSize: 11, paddingTop: 10 }} />}
         </LineChart>
       </ResponsiveContainer>
     );
@@ -127,14 +127,14 @@ function SmartChart({ data, type }: { data: Record<string, unknown>[]; type: Cha
   // Default: bar
   return (
     <ResponsiveContainer width="100%" height={220}>
-      <BarChart data={displayData} margin={{ left: 0, right: 8, top: 4, bottom: 0 }}>
+      <BarChart data={displayData} margin={{ left: 0, right: 8, top: 25, bottom: 0 }}>
         <XAxis dataKey={labelKey} tick={{ fontSize: 10, fill: 'var(--text-tertiary)' }} axisLine={false} tickLine={false} />
         <YAxis tick={{ fontSize: 10, fill: 'var(--text-tertiary)' }} axisLine={false} tickLine={false} />
         <Tooltip contentStyle={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-primary)', borderRadius: 8, fontSize: 12 }} />
         {valueKeys.map((k, i) => (
           <Bar key={k} dataKey={k} fill={CHART_COLORS[i % CHART_COLORS.length]} radius={[4, 4, 0, 0]} />
         ))}
-        {valueKeys.length > 1 && <Legend wrapperStyle={{ fontSize: 11 }} />}
+        {valueKeys.length > 1 && <Legend wrapperStyle={{ fontSize: 11, paddingTop: 10 }} />}
       </BarChart>
     </ResponsiveContainer>
   );
@@ -143,7 +143,8 @@ function SmartChart({ data, type }: { data: Record<string, unknown>[]; type: Cha
 // ---- Results Table ----
 function ResultTable({ data }: { data: Record<string, unknown>[] }) {
   if (!data || data.length === 0) return null;
-  const cols = Object.keys(data[0]);
+  const allCols = Object.keys(data[0]);
+  const cols = allCols.filter((c) => !isIdOrUUIDColumn(c, data[0][c]));
 
   const exportCSV = () => {
     const rows = [cols.join(','), ...data.map((r) => cols.map((c) => String(r[c] ?? '')).join(','))];
@@ -161,7 +162,15 @@ function ResultTable({ data }: { data: Record<string, unknown>[] }) {
           </thead>
           <tbody>
             {data.map((row, i) => (
-              <tr key={i}>{cols.map((c) => <td key={c}>{String(row[c] ?? '—')}</td>)}</tr>
+              <tr key={i}>{cols.map((c) => {
+                const val = row[c];
+                // Truncate UUID-looking strings or ID strings
+                let displayVal = String(val ?? '—');
+                if (typeof val === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val)) {
+                  displayVal = val.slice(0, 8) + '…';
+                }
+                return <td key={c}>{displayVal}</td>;
+              })}</tr>
             ))}
           </tbody>
         </table>

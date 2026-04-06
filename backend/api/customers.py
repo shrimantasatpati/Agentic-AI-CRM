@@ -22,6 +22,7 @@ class CustomerResponse(BaseModel):
 
 
 @router.get("/", response_model=List[CustomerResponse])
+@router.get("/list", response_model=List[CustomerResponse])
 async def list_customers(
     skip: int = 0,
     limit: int = 100,

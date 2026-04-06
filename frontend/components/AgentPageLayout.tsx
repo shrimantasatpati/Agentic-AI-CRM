@@ -43,6 +43,7 @@ interface AgentPageLayoutProps {
   onRun: (formData: Record<string, string>) => Promise<void>;
   resultNode: React.ReactNode;
   isComplete: boolean;
+  isReady?: boolean;
   error?: string | null;
   onRetry?: () => void;
 }
@@ -50,7 +51,7 @@ interface AgentPageLayoutProps {
 export default function AgentPageLayout({
   agentName, agentDescription, agentColor, agentEmoji,
   formFields, defaultValues, examples, steps,
-  onRun, resultNode, isComplete, error, onRetry, headerExtra,
+  onRun, resultNode, isComplete, error, onRetry, headerExtra, isReady,
 }: AgentPageLayoutProps) {
   const [formData, setFormData] = useState<Record<string, string>>(defaultValues);
   const [running, setRunning]   = useState(false);
@@ -148,9 +149,14 @@ export default function AgentPageLayout({
 
             <button
               className="btn-primary w-full mt-2"
-              disabled={running}
+              disabled={running || isReady === false}
               onClick={handleRun}
-              style={{ background: `linear-gradient(135deg, ${agentColor}, ${agentColor}cc)` }}
+              style={{ 
+                background: running || isReady === false ? 'rgba(0,0,0,0.1)' : `linear-gradient(135deg, ${agentColor}, ${agentColor}cc)`,
+                opacity: running || isReady === false ? 0.6 : 1,
+                cursor: running || isReady === false ? 'not-allowed' : 'pointer',
+                color: running || isReady === false ? 'var(--text-tertiary)' : '#fff'
+              }}
             >
               {running ? (
                 <><div className="step-spinner" style={{ borderTopColor: '#fff', width: 14, height: 14 }} /> Running...</>
@@ -158,6 +164,11 @@ export default function AgentPageLayout({
                 <>▶ Run Agent</>
               )}
             </button>
+            {isReady === false && (
+              <p className="text-[10px] text-center mt-2" style={{ color: '#ff3b30' }}>
+                Please select a record from the dropdown/list above to continue.
+              </p>
+            )}
 
             {/* Example Inputs */}
             <div className="mt-5">

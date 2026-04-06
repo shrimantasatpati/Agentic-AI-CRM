@@ -49,7 +49,7 @@ export default function PipelinePage() {
       .then(r => r.ok ? r.json() : [])
       .then((data: DealOption[]) => {
         setDeals(data);
-        if (data.length > 0) setSelectedDeal(data[0]);
+        // Removed auto-selection to force user choice
       })
       .catch(() => {})
       .finally(() => setDealsLoading(false));
@@ -170,8 +170,8 @@ export default function PipelinePage() {
       examples={[]}
       steps={STEPS}
       onRun={handleRunWrapped}
-      error={error}
       isComplete={isComplete}
+      isReady={!!selectedDeal}
       headerExtra={dealSelector}
       resultNode={result && (
         <div className="space-y-4">

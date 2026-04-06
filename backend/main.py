@@ -401,8 +401,8 @@ async def get_agent_events(limit: int = 25, db: Session = Depends(get_db)):
         {
             "id": log.id, "agent": log.agent_name, "type": log.activity_type,
             "details": log.details,
-            # isoformat() without Z means local time — browser new Date() interprets as local
-            "timestamp": log.created_at.strftime("%Y-%m-%dT%H:%M:%S") if log.created_at else None,
+            # ISO format with 'Z' suffix ensures browsers treat it as UTC and convert to local offset
+            "timestamp": log.created_at.strftime("%Y-%m-%dT%H:%M:%S") + "Z" if log.created_at else None,
         }
         for log in logs
     ]

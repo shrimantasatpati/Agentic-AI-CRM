@@ -49,7 +49,7 @@ export default function CustomersPage() {
       .then(r => r.ok ? r.json() : [])
       .then((data: CustomerOption[]) => {
         setCustomers(data);
-        if (data.length > 0) setSelectedCustomer(data[0]);
+        // Removed auto-selection to force user choice
       })
       .catch(() => {})
       .finally(() => setCustomersLoading(false));
@@ -169,6 +169,7 @@ export default function CustomersPage() {
       onRun={handleRun}
       error={error}
       isComplete={isComplete}
+      isReady={!!selectedCustomer}
       headerExtra={customerSelector}
       resultNode={result && (
         <div className="space-y-4">

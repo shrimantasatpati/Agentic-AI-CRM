@@ -104,7 +104,7 @@ export default function Sidebar() {
     <>
       {/* Mobile hamburger */}
       <button
-        className="fixed top-4 left-4 z-[200] md:hidden p-2 rounded-lg btn-secondary"
+        className="fixed top-5 left-5 z-[200] md:hidden p-2 rounded-lg btn-secondary"
         onClick={() => setOpen(true)}
         aria-label="Open menu"
       >
@@ -121,18 +121,18 @@ export default function Sidebar() {
         {/* Header */}
         <div className="p-4 border-b" style={{ borderColor: 'var(--border-primary)' }}>
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-3">
               <div
-                className="w-8 h-8 rounded-xl flex items-center justify-center text-white flex-shrink-0"
-                style={{ background: 'linear-gradient(135deg, #0066cc 0%, #5e5ce6 100%)', boxShadow: '0 2px 8px rgba(0,102,204,0.4)' }}
+                className="w-10 h-10 rounded-xl flex items-center justify-center text-white flex-shrink-0"
+                style={{ background: 'linear-gradient(135deg, #0066cc 0%, #5e5ce6 100%)', boxShadow: '0 4px 12px rgba(0,102,204,0.3)' }}
               >
-                <Cpu size={15} color="#fff" />
+                <Cpu size={20} color="#fff" />
               </div>
-              <div className="flex flex-col leading-none">
-                <span style={{ color: 'var(--text-primary)', fontWeight: 800, fontSize: 15, letterSpacing: '-0.3px' }}>
+              <div className="flex flex-col leading-tight">
+                <span style={{ color: 'var(--text-primary)', fontWeight: 900, fontSize: 18, letterSpacing: '-0.5px' }}>
                   AI CRM
                 </span>
-                <span style={{ color: 'var(--text-tertiary)', fontSize: 10, fontWeight: 500, marginTop: 1 }}>
+                <span style={{ color: 'var(--text-tertiary)', fontSize: 11, fontWeight: 600, marginTop: 1 }}>
                   Agentic Intelligence
                 </span>
               </div>

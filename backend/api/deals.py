@@ -31,6 +31,7 @@ class DealResponse(BaseModel):
 
 
 @router.get("/", response_model=List[DealResponse])
+@router.get("/list", response_model=List[DealResponse])
 async def list_deals(
     skip: int = 0,
     limit: int = 100,
