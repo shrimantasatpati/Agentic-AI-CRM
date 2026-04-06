@@ -144,7 +144,7 @@ export default function LeadsPage() {
             Select Lead from CRM {!leadsLoading && <span className="ml-1 opacity-60 font-medium">({leads.length} found)</span>}
           </h3>
         </div>
-        {!leadsLoading && <span className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest">Lead Fit Score</span>}
+        {!leadsLoading && <div className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest text-right" style={{ width: 120 }}>Lead Fit Score</div>}
       </div>
       
       {leadsLoading ? (
@@ -188,11 +188,11 @@ export default function LeadsPage() {
                     <span className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>{l.company_name || 'Individual'}</span>
                   </div>
                 </div>
-                 <div className="text-right flex-shrink-0" style={{ width: 60 }}>
+                 <div className="text-right flex-shrink-0" style={{ width: 120 }}>
                     <div className="text-[11px] font-bold" style={{ color: l.lead_score >= 70 ? '#34c759' : l.lead_score >= 40 ? '#ff9500' : '#ff3b30' }}>
                       {l.lead_score}% Match
                     </div>
-                    <div className="text-[9px] text-[var(--text-tertiary)] font-bold uppercase">Fit Score</div>
+                    <div className="text-[9px] text-[var(--text-tertiary)] font-bold uppercase tracking-tight">Fit Score</div>
                  </div>
               </div>
             </button>
@@ -222,7 +222,7 @@ export default function LeadsPage() {
           </div>
         </div>
       )}
-    <div className="max-w-6xl">
+    <div className="max-w-[1400px]">
       <AgentPageLayout
         agentId="LeadQualificationAgent"
         agentName="Smart Lead Qualification"
