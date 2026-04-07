@@ -452,7 +452,7 @@ Frontend runs at **http://localhost:3000**
 
 ### LLM Provider Selection
 
-The `MODEL_PROVIDER` env var forces a specific provider. Without it, the system auto-detects by checking for API keys in this order: **Groq → Gemini → xAI → Mock**.
+The `MODEL_PROVIDER` env var forces a specific provider. Without it, the system auto-detects by checking for API keys in this order: **Groq → Gemini → xAI → Mock mode**.
 
 ```env
 # Force Gemini (recommended — best reasoning quality)
@@ -600,7 +600,7 @@ ai-crm/
 2. In `backend/.env`:
    ```env
    GEMINI_API_KEY=AIza...
-   GEMINI_MODEL_NAME=gemini-2.5-flash-preview-04-17
+   GEMINI_MODEL_NAME=gemini-2.5-flash
    MODEL_PROVIDER=gemini
    ```
 
