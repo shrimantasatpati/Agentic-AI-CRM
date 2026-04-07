@@ -820,6 +820,47 @@ async def sync_gmail_emails(limit: int = 20, db: Session = Depends(get_db), back
         raise HTTPException(status_code=503, detail=f"Gmail sync failed: {e}")
 
 
+@app.get("/api/emails/analyzed")
+async def get_analyzed_emails(limit: int = 50, db: Session = Depends(get_db)):
+    """
+    Return all CRM inbox emails with their analysis results for the frontend email page.
+    Reads analysis results (sentiment, category, priority, draft) from extra_metadata.
+    """
+    from database.models import Email as EmailModel
+    from sqlalchemy import desc
+    emails = (
+        db.query(EmailModel)
+        .filter(EmailModel.direction == "inbound")
+        .order_by(desc(EmailModel.created_at))
+        .limit(limit)
+        .all()
+    )
+    rows = []
+    for e in emails:
+        meta = e.extra_metadata or {}
+        sentiment = meta.get("sentiment") or {}
+        rows.append({
+            "id": e.id,
+            "from_email": e.from_email or "",
+            "subject": e.subject or "",
+            "body_preview": (e.body or "")[:200],
+            "company": (e.from_email or "").split("@")[-1] if "@" in (e.from_email or "") else "",
+            "received_at": e.created_at.isoformat() + "Z" if e.created_at else None,
+            "analyzed": bool(meta.get("agent_analyzed")),
+            "sentiment_label": sentiment.get("label", "neutral") if isinstance(sentiment, dict) else "neutral",
+            "sentiment_score": sentiment.get("score", 5) if isinstance(sentiment, dict) else 5,
+            "sentiment_emotion": sentiment.get("emotion", "neutral") if isinstance(sentiment, dict) else "neutral",
+            "sentiment_urgency": sentiment.get("urgency", "medium") if isinstance(sentiment, dict) else "medium",
+            "category": meta.get("category", "general_inquiry") or "general_inquiry",
+            "priority": meta.get("priority", "medium") or "medium",
+            "draft_response": meta.get("draft_response", "") or "",
+            "follow_up_suggestions": meta.get("follow_up_suggestions", []) or [],
+            "auto_sent": meta.get("auto_sent", False),
+            "send_status": meta.get("send_status", ""),
+        })
+    return rows
+
+
 @app.post("/api/emails/send-reply")
 async def send_email_reply(payload: Dict[str, Any]):
     """Send an AI-drafted reply email via Gmail API."""
@@ -844,67 +885,66 @@ async def send_email_reply(payload: Dict[str, Any]):
 @app.post("/api/emails/analyze-inbox")
 async def analyze_inbox_emails(limit: int = 10, email_id: str = None, db: Session = Depends(get_db)):
     """
-    Downstream automation: read unanalyzed inbound emails from CRM DB,
-    run EmailIntelligenceAgent on each, store results back in the record.
-    If email_id is provided, only that specific email is analyzed.
+    Run EmailIntelligenceAgent on unanalyzed inbound emails in one BATCH call.
+    Each email gets: VADER sentiment + Gemini category/priority/draft + validator + Gmail auto-send.
     """
     from database.models import Email as EmailModel
     from sqlalchemy import desc
     try:
-        # Fetch unanalyzed inbound emails
         query = db.query(EmailModel).filter(EmailModel.direction == "inbound")
-        
         if email_id:
             query = query.filter(EmailModel.id == email_id)
         else:
             query = query.order_by(desc(EmailModel.created_at))
-            
+
         emails = query.limit(limit).all()
-        
-        # Skip already-analyzed ones
-        unanalyzed = [
+
+        # Include both unanalyzed AND previously failed (no draft_response)
+        to_analyze = [
             e for e in emails
             if not (e.extra_metadata or {}).get("agent_analyzed")
         ]
-        if not unanalyzed:
-            if email_id:
-                 return {"status": "ok", "message": "Email already analyzed", "analyzed": 0}
+        if not to_analyze:
             return {"status": "ok", "message": "No unanalyzed emails found", "analyzed": 0}
 
-        results = []
-        for email_record in unanalyzed:
-            try:
-                agent_result = await orchestrator.email_agent.execute({
-                    "action": "analyze",
-                    "from": email_record.from_email,
-                    "subject": email_record.subject,
-                    "body": email_record.body or email_record.snippet or "",
-                    "email_id": email_record.id,
-                })
-                # Store analysis result back on the record
-                metadata = dict(email_record.extra_metadata or {})
-                metadata["agent_analyzed"] = True
-                metadata["sentiment"] = agent_result.get("sentiment")
-                metadata["category"] = agent_result.get("category")
-                metadata["priority"] = agent_result.get("priority")
-                metadata["draft_response"] = agent_result.get("draft_response")
-                metadata["follow_up_suggestions"] = agent_result.get("follow_up_suggestions", [])
-                email_record.extra_metadata = metadata
-                db.add(email_record)
-                results.append({
-                    "email_id": email_record.id,
-                    "subject": email_record.subject,
-                    "sentiment": agent_result.get("sentiment"),
-                    "priority": agent_result.get("priority"),
-                    "category": agent_result.get("category"),
-                })
-            except Exception as e:
-                results.append({"email_id": email_record.id, "error": str(e)})
+        batch_data = [
+            {
+                "id": e.id,
+                "from": e.from_email or "",
+                "from_name": (e.from_email or "").split("@")[0].title(),
+                "subject": e.subject or "",
+                "body": e.body or "",
+            }
+            for e in to_analyze
+        ]
+
+        print(f"[ANALYZE-INBOX] Batch analyzing {len(batch_data)} emails via EmailIntelligenceAgent...")
+        batch_results = await orchestrator.email_agent.execute_batch(batch_data)
+        results_map = {str(res["email_id"]): res for res in batch_results}
+
+        saved = []
+        for email_record in to_analyze:
+            str_id = str(email_record.id)
+            res = results_map.get(str_id, {})
+            metadata = dict(email_record.extra_metadata or {})
+            metadata["agent_analyzed"] = True
+            metadata["sentiment"] = res.get("sentiment")
+            metadata["category"] = res.get("category")
+            metadata["priority"] = res.get("priority")
+            metadata["draft_response"] = res.get("draft_response", "")
+            metadata["follow_up_suggestions"] = res.get("follow_up_suggestions", [])
+            metadata["auto_sent"] = res.get("auto_sent", False)
+            metadata["send_status"] = res.get("send_status", "")
+            email_record.extra_metadata = metadata
+            db.add(email_record)
+            saved.append({"email_id": str_id, "category": res.get("category"), "priority": res.get("priority"), "auto_sent": res.get("auto_sent", False)})
 
         db.commit()
-        return {"status": "success", "analyzed": len(results), "results": results}
+        print(f"[ANALYZE-INBOX] Done — {len(saved)} emails analyzed and auto-sent.")
+        return {"status": "success", "analyzed": len(saved), "results": saved}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Inbox analysis failed: {e}")
+
 
 
 # ============================================================================

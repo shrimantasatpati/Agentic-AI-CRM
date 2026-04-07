@@ -54,12 +54,12 @@ class BaseAgent(ABC):
         """Helper to redact PII (Emails, Phones, Names) from text"""
         return DataMasker.redact(text)
 
-    async def think(self, prompt: str, max_retries: int = 3) -> str:
+    async def think(self, prompt: str, max_retries: int = 3, max_tokens: int = 512) -> str:
         """Use LLM to reason about a task — with exponential backoff retry on failure."""
         last_error: Exception | None = None
         for attempt in range(max_retries):
             try:
-                return await self.llm.generate(prompt)
+                return await self.llm.generate(prompt, max_tokens=max_tokens)
             except Exception as e:
                 last_error = e
                 if attempt < max_retries - 1:

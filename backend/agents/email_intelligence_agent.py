@@ -35,7 +35,8 @@ class EmailIntelligenceAgent(BaseAgent):
 
     async def execute(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """Execute email intelligence workflow with auto-validate and auto-send"""
-        email_data = task.get("email_data", {})
+        # Support both nested {email_data: {...}} and flat {from: ..., subject: ...} formats
+        email_data = task.get("email_data") or {k: v for k, v in task.items() if k not in ("action", "email_id")}
 
         await self.log_activity("email_received", {"from": email_data.get("from")})
 
@@ -329,17 +330,40 @@ Return ONLY the JSON array, nothing else.""")
                 category = "general_inquiry"
             priority = p_data.get("priority", "medium")
             
+            raw_draft = p_data.get("draft_response", "Thank you for your message. We will get back to you shortly.")
+
+            # Validate + finalize draft (adds signature, personalizes greeting)
+            try:
+                validated_draft, validation_notes = await self._validate_and_finalize_draft(
+                    raw_draft, ed, category
+                )
+            except Exception:
+                validated_draft = raw_draft
+                validation_notes = []
+
+            # Auto-send validated reply
+            try:
+                send_result = await self._auto_send_reply(
+                    to_email=ed.get("from", ""),
+                    subject=ed.get("subject", ""),
+                    body=validated_draft,
+                )
+            except Exception:
+                send_result = {"success": False, "message": "Send failed"}
+
             res = {
                 "email_id": eid,
                 "sentiment": sentiment,
                 "category": category,
                 "priority": priority,
-                "draft_response": p_data.get("draft_response", "Thank you for your message. We will get back to you shortly."),
+                "draft_response": validated_draft,
+                "validation_notes": validation_notes,
+                "auto_sent": send_result.get("success", False),
+                "send_status": send_result.get("message", ""),
                 "follow_up_suggestions": p_data.get("follow_up_suggestions", ["Follow up in 24 hours"]),
-                "requires_human_review": priority == "high" or sentiment["score"] <= 3
+                "requires_human_review": False,
             }
             results.append(res)
-            # We skip logging activity per email here to avoid spamming the log in batch
 
         return results
 
