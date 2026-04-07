@@ -837,7 +837,7 @@ MIT © 2026 AI CRM
 
 <div align="center">
 
-**Built for modern revenue teams · Powered by Gemini 2.5 Flash**
+**Built for modern revenue teams · By Shrimanta Satpati**
 
 [⭐ Star this repo](https://github.com/your-org/ai-crm) · [🐛 Report a bug](https://github.com/your-org/ai-crm/issues) · [💡 Request a feature](https://github.com/your-org/ai-crm/issues)
 
