@@ -73,6 +73,7 @@ class SalesPipelineAgent(BaseAgent):
             "close_probability": close_probability,
             "is_stalled": is_stalled,
             "next_actions": next_actions,
+            "recommendations": next_actions, # Map next_actions to recommendations for UI
             "forecast_close_date": forecast_date,
             "risk_factors": await self.identify_risk_factors(deal_data)
         }
@@ -130,11 +131,16 @@ Return exactly:
 
         health_score    = min(100, max(0, int(parsed.get("health_score", 50))))
         close_probability = min(100, max(0, int(parsed.get("close_probability", 50))))
+        
         next_actions    = parsed.get("next_actions", [])
+        if not next_actions and "recommendations" in parsed:
+            next_actions = parsed.get("recommendations", [])
+            
         if isinstance(next_actions, str):
             next_actions = [s.strip() for s in next_actions.split("\n") if s.strip()]
 
-        return health_score, close_probability, next_actions
+        raw_actions = [a.lstrip('- ').strip() for a in next_actions if len(a) > 2]
+        return health_score, close_probability, raw_actions if raw_actions else ["Schedule follow-up call", "Send updated proposal", "Confirm budgetary approval"]
 
 
     async def calculate_health_score(self, deal_data: Dict[str, Any]) -> int:

@@ -105,6 +105,12 @@ class AskCRMAgent(BaseAgent):
                     f"SQLite CRM Expert. Generate a valid SQLite SELECT query.\n"
                     f"Question: \"{query_prompt[:200]}\"\n\n"
                     f"DATABASE SCHEMA:\n{schema_str[:1500]}\n\n"
+                    f"BUSINESS LOGIC HINTS:\n"
+                    f"- 'Revenue' means SUM(value) from deals where stage='closed_won'.\n"
+                    f"- 'Deals' are in the deals table.\n"
+                    f"- 'Pipeline' value is sum(value) of deals that are NOT won/lost.\n"
+                    f"- 'Customers' refers to the customers table or contacts with status='customer'.\n"
+                    f"- IMPORTANT: ALWAYS use descriptive AS aliases for calculated columns (e.g., SUM(value) AS total_revenue).\n\n"
                     f"{error_hint}"
                     f"Return ONLY raw SQL. No markdown, no ```sql."
                 )

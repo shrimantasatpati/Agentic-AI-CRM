@@ -134,10 +134,14 @@ Return exactly:
 
         health_score = min(100, max(0, int(parsed.get("health_score", 50))))
         actions = parsed.get("recommended_actions", [])
+        if not actions and "recommendations" in parsed:
+            actions = parsed.get("recommendations", [])
+            
         if isinstance(actions, str):
             actions = [s.strip() for s in actions.split("\n") if s.strip()]
 
-        return health_score, actions
+        raw_actions = [a.lstrip('- ').strip() for a in actions if len(a) > 2]
+        return health_score, raw_actions if raw_actions else ["Schedule check-in call", "Review feature adoption", "Send best practices guide"]
 
 
     async def calculate_health_score(self, customer_data: Dict[str, Any]) -> int:
