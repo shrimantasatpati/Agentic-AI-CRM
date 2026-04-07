@@ -34,7 +34,7 @@ class EmailIntelligenceAgent(BaseAgent):
         ]
 
     async def execute(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute email intelligence workflow"""
+        """Execute email intelligence workflow with auto-validate and auto-send"""
         email_data = task.get("email_data", {})
 
         await self.log_activity("email_received", {"from": email_data.get("from")})
@@ -45,7 +45,19 @@ class EmailIntelligenceAgent(BaseAgent):
         # Step 4: Draft response (needs analysis results — separate call)
         draft_response = await self.draft_response(email_data, sentiment, category)
 
-        # Step 5: Generate follow-up suggestions (batched into draft call via suggest_follow_ups)
+        # Step 5: Validate draft with second LLM agent — adds salutation, checks quality
+        validated_draft, validation_notes = await self._validate_and_finalize_draft(
+            draft_response, email_data, category
+        )
+
+        # Step 6: Auto-send the validated draft reply
+        send_result = await self._auto_send_reply(
+            to_email=email_data.get("from", ""),
+            subject=email_data.get("subject", ""),
+            body=validated_draft
+        )
+
+        # Step 7: Generate follow-up suggestions (batched into draft call via suggest_follow_ups)
         follow_ups = await self.suggest_follow_ups(email_data, category)
 
         # Publish event
@@ -61,14 +73,88 @@ class EmailIntelligenceAgent(BaseAgent):
             "sentiment": sentiment,
             "category": category,
             "priority": priority,
-            "draft_response": draft_response,
+            "draft_response": validated_draft,
+            "validation_notes": validation_notes,
+            "auto_sent": send_result.get("success", False),
+            "send_status": send_result.get("message", ""),
             "follow_up_suggestions": follow_ups,
-            "requires_human_review": priority == "high" or sentiment["score"] < 3
+            "requires_human_review": False  # Auto-sent — no review needed
         }
 
         await self.log_activity("email_processed", result)
 
         return result
+
+    async def _validate_and_finalize_draft(
+        self, draft: str, email_data: Dict[str, Any], category: str
+    ):
+        """Second LLM agent: validates draft quality, fixes tone, appends salutation."""
+        import json, re
+
+        sender_name = email_data.get("from_name", "") or email_data.get("from", "").split("@")[0].title()
+
+        validate_prompt = f"""You are an email quality validator for an AI CRM system.
+
+Review this AI-drafted email response and improve it:
+
+ORIGINAL DRAFT:
+{draft[:1000]}
+
+CONTEXT:
+- Sender name: {sender_name}
+- Email category: {category}
+
+VALIDATION CHECKLIST:
+1. Does it directly address the sender's request? If not, rewrite to address it.
+2. Is the tone appropriate for the category ({category})? Fix if needed.
+3. Is the greeting personalized? Use "Hi {sender_name}," if a name is available.
+4. Is there a professional closing with "Best regards,\\nAI CRM Team"? Add it if missing.
+5. Remove any placeholder text like "[Name]" or "[X]".
+6. Keep it concise: 3-4 paragraphs max.
+
+Return ONLY this JSON:
+{{
+  "finalized_draft": "<complete improved email as string, use \\n for line breaks>",
+  "issues_fixed": ["issue1 fixed", "issue2 fixed"]
+}}"""
+
+        raw = await self.think(validate_prompt)
+
+        try:
+            json_match = re.search(r'\{.*\}', raw, re.DOTALL)
+            parsed = json.loads(json_match.group() if json_match else raw)
+            finalized = parsed.get("finalized_draft", draft)
+            notes = parsed.get("issues_fixed", [])
+        except Exception:
+            # Fallback: just append salutation if validator fails
+            finalized = draft.rstrip()
+            if "AI CRM Team" not in finalized:
+                finalized += "\n\nBest regards,\nAI CRM Team"
+            notes = ["Validator parse failed — salutation appended as fallback"]
+
+        return finalized, notes
+
+    async def _auto_send_reply(self, to_email: str, subject: str, body: str) -> Dict[str, Any]:
+        """Auto-send the validated email reply via Gmail service."""
+        if not to_email or "@" not in to_email:
+            return {"success": False, "message": "No valid recipient email — skipped send"}
+
+        # Skip sending to masked/internal addresses
+        if "masked.com" in to_email or "example.com" in to_email:
+            return {"success": False, "message": f"Skipped internal/masked address: {to_email}"}
+
+        reply_subject = subject if subject.startswith("Re:") else f"Re: {subject}"
+
+        try:
+            from services.gmail_service import send_reply
+            result = send_reply(to_email=to_email, subject=reply_subject, body=body)
+            if result.get("success"):
+                await self.log_activity("email_auto_sent", {"to": to_email, "subject": reply_subject})
+                return {"success": True, "message": f"Auto-sent to {to_email}"}
+            else:
+                return {"success": False, "message": result.get("error", "Send failed")}
+        except Exception as e:
+            return {"success": False, "message": f"Gmail not connected: {str(e)[:80]}"}
 
     async def _analyze_email_single_call(self, email_data: Dict[str, Any]):
         """

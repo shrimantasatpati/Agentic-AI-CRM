@@ -60,13 +60,17 @@ class AskCRMAgent(BaseAgent):
         profile = build_metadata_profile(data)
         safe_data = strip_pii_from_rows(data, profile.get("pii_columns", []))
 
-        # Step 4: LLM summary using metadata only (not raw values)
+        # Step 4: Rich LLM narrative — include actual row count + sampled values for context
         steps.append("🧩 Reasoning Agent synthesizing final narrative response...")
-        data_snippet = str(safe_data[:5])[:300]  # Max 5 rows, 300 chars for summary input
+        data_snippet = str(safe_data[:5])[:500]
+        row_count = len(data)
         summary_prompt = (
-            f'CRM query: "{prompt[:100]}". '
-            f'Result ({len(data)} rows): {data_snippet}. '
-            f'Write a 1-2 sentence professional summary.'
+            f'You are a CRM data analyst. The user asked: "{prompt[:150]}".\n'
+            f'The SQL returned {row_count} row(s). Sample data: {data_snippet}.\n'
+            f'Write a concise 2-3 sentence executive summary of the results. '
+            f'Include specific numbers, names, or values from the data. '
+            f'If zero rows returned, explain what that might mean for the business (e.g., no won deals = pipeline at risk). '
+            f'Be direct and actionable, not generic.'
         )
         summary = await self.think(summary_prompt)
 
@@ -81,7 +85,7 @@ class AskCRMAgent(BaseAgent):
             "steps": steps,
             "chart_suggestion": chart_suggestion,
             "metadata": {
-                "row_count": len(data),
+                "row_count": row_count,
                 "pii_columns_redacted": profile.get("pii_columns", []),
             },
         }
@@ -102,17 +106,34 @@ class AskCRMAgent(BaseAgent):
 
                 error_hint = f"Previous SQL failed: {last_error}. Fix it.\n" if last_error else ""
                 gen_prompt = (
-                    f"SQLite CRM Expert. Generate a valid SQLite SELECT query.\n"
-                    f"Question: \"{query_prompt[:200]}\"\n\n"
-                    f"DATABASE SCHEMA:\n{schema_str[:1500]}\n\n"
-                    f"BUSINESS LOGIC HINTS:\n"
-                    f"- 'Revenue' means SUM(value) from deals where stage='closed_won'.\n"
-                    f"- 'Deals' are in the deals table.\n"
-                    f"- 'Pipeline' value is sum(value) of deals that are NOT won/lost.\n"
-                    f"- 'Customers' refers to the customers table or contacts with status='customer'.\n"
-                    f"- IMPORTANT: ALWAYS use descriptive AS aliases for calculated columns (e.g., SUM(value) AS total_revenue).\n\n"
+                    f"You are a SQLite CRM expert. Generate a valid, optimized SELECT query.\n"
+                    f"Question: \"{query_prompt[:250]}\"\n\n"
+                    f"LIVE DATABASE SCHEMA:\n{schema_str[:2000]}\n\n"
+                    f"CRM ENTITY RELATIONSHIPS:\n"
+                    f"- contacts JOIN companies ON contacts.company_id = companies.id\n"
+                    f"- deals JOIN contacts ON deals.contact_id = contacts.id\n"
+                    f"- deals JOIN companies ON deals.company_id = companies.id\n"
+                    f"- customers JOIN companies ON customers.company_id = companies.id\n"
+                    f"- emails JOIN contacts ON emails.contact_id = contacts.id\n\n"
+                    f"BUSINESS LOGIC:\n"
+                    f"- 'Revenue' / 'Won' = SUM(deals.value) WHERE deals.stage = 'closed_won'\n"
+                    f"- 'Pipeline value' = SUM(deals.value) WHERE deals.stage NOT IN ('closed_won','closed_lost')\n"
+                    f"- 'MRR' = SUM(customers.mrr)\n"
+                    f"- 'ARR' = SUM(customers.arr) or SUM(customers.mrr) * 12\n"
+                    f"- 'Leads' = contacts WHERE lead_score IS NOT NULL\n"
+                    f"- 'High-value leads' = contacts WHERE lead_score >= 70\n"
+                    f"- 'Stalled deals' = deals WHERE is_stalled = 1\n"
+                    f"- 'Churn risk' = customers WHERE churn_risk IN ('high','critical')\n"
+                    f"- 'Active customers' = customers WHERE churn_risk != 'critical'\n\n"
+                    f"QUERY RULES:\n"
+                    f"- ALWAYS add descriptive AS aliases: SUM(value) AS total_revenue\n"
+                    f"- Use LEFT JOIN when company/contact may be null\n"
+                    f"- For 'top N', use ORDER BY ... DESC LIMIT N\n"
+                    f"- For trends, GROUP BY strftime('%Y-%m', created_at)\n"
+                    f"- Never use column names that don't exist in the schema\n"
+                    f"- For stage breakdown: GROUP BY stage ORDER BY value DESC\n\n"
                     f"{error_hint}"
-                    f"Return ONLY raw SQL. No markdown, no ```sql."
+                    f"Return ONLY raw SQL. No markdown, no explanation, no ```sql."
                 )
 
                 raw_sql = await self.think(gen_prompt)

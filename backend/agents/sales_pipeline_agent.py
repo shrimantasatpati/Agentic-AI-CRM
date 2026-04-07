@@ -103,22 +103,29 @@ class SalesPipelineAgent(BaseAgent):
         """Single optimized LLM call: health_score + close_probability + actions in one JSON response"""
         import json, re
 
-        combined_prompt = f"""Analyze this sales deal and return ONLY a valid JSON object:
+        combined_prompt = f"""You are an expert B2B sales coach. Analyze this CRM deal and return ONLY a valid JSON object with no extra text:
 
-Deal:
+Deal: {deal_data.get('name', 'Unknown Deal')}
 - Value: ${deal_data.get('value', 0):,}
 - Stage: {deal_data.get('stage')}
+- Company: {deal_data.get('company', 'Unknown')}
+- Contact: {deal_data.get('contact_name', 'Unknown')}
 - Days in stage: {deal_data.get('days_in_stage', 0)}
 - Last contact: {deal_data.get('last_contact_days_ago', 0)} days ago
 - Decision maker engaged: {deal_data.get('decision_maker_engaged', False)}
 - Budget confirmed: {deal_data.get('budget_confirmed', False)}
-- Stage close rate: {self._get_stage_close_rate(deal_data.get('stage'))}%
+- Proposal sent: {deal_data.get('proposal_sent', False)}
+- Blockers: {deal_data.get('blockers', 'None identified')}
+- Activities completed: {deal_data.get('activities_count', 0)}
+- Stage close rate benchmark: {self._get_stage_close_rate(deal_data.get('stage'))}%
 
-Return exactly:
+Provide specific, deal-named next actions (e.g. "Call {deal_data.get('contact_name', 'stakeholder')} to confirm budget").
+
+Return exactly this JSON:
 {{
   "health_score": <integer 0-100>,
   "close_probability": <integer 0-100>,
-  "next_actions": ["action1", "action2", "action3"]
+  "next_actions": ["specific action 1", "specific action 2", "specific action 3"]
 }}"""
 
         raw = await self.think(combined_prompt)
@@ -405,6 +412,8 @@ Return exactly:
                     "name": deal.name,
                     "value": deal.value,
                     "stage": deal.stage,
+                    "company": deal.company.name if deal.company else "Unknown",
+                    "contact_name": f"{deal.contact.first_name} {deal.contact.last_name}" if deal.contact else "Unknown",
                     "days_in_stage": age_days,
                     "last_contact_days_ago": last_contact_days_ago,
                     "engagement_level": engagement_level,

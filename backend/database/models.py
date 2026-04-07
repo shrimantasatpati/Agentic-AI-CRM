@@ -50,6 +50,7 @@ class Contact(Base):
     # Lead Qualification
     lead_status = Column(String(50), default='new')
     lead_source = Column(String(100))
+    lead_score = Column(Integer, default=0)
 
     # Timestamps
     created_at = Column(DateTime, server_default=func.now())

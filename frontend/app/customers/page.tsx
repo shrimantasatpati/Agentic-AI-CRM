@@ -249,17 +249,24 @@ export default function CustomersPage() {
             {result.upsell_opportunities?.length > 0 && (
               <div className="apple-card">
                 <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Upsell Opportunities</p>
-                <div className="space-y-3">
-                  {result.upsell_opportunities.map((u, i) => (
+              <div className="space-y-3">
+                  {result.upsell_opportunities.map((u, i) => {
+                    const confidenceLabel = typeof u.confidence === 'number'
+                      ? `${Math.round(u.confidence * 100)}%`
+                      : (u.confidence ?? 'medium');
+                    const description = u.description || u.suggestion || u.reason || '';
+                    const valueStr = u.estimated_value ? `+$${u.estimated_value}/mo` : '';
+                    return (
                     <div key={i} className="p-3 rounded-xl" style={{ background: 'var(--bg-input)', border: '1px solid var(--border-secondary)' }}>
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="badge badge-teal">{u.type}</span>
-                        <span className="text-xs ml-auto" style={{ color: 'var(--text-tertiary)' }}>Confidence: {Math.round((u.confidence ?? 0) * 100)}%</span>
-                        <span className="text-xs font-semibold" style={{ color: COLOR }}>+${u.estimated_value}/mo</span>
+                        <span className="badge badge-teal">{u.type || 'opportunity'}</span>
+                        <span className="text-xs ml-auto" style={{ color: 'var(--text-tertiary)' }}>Confidence: {confidenceLabel}</span>
+                        {valueStr && <span className="text-xs font-semibold" style={{ color: COLOR }}>{valueStr}</span>}
                       </div>
-                      <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{u.description}</p>
+                      {description && <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{description}</p>}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -268,17 +275,22 @@ export default function CustomersPage() {
               <div className="apple-card">
                 <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Recommended Actions</p>
                 <div className="space-y-2">
-                  {result.recommended_actions.map((a, i) => (
+                  {result.recommended_actions.map((a, i) => {
+                    const actionText = typeof a === 'string' ? a : (a.action ?? '');
+                    const priority   = typeof a === 'string' ? (i === 0 ? 'high' : 'medium') : (a.priority ?? 'medium');
+                    const dueDate    = typeof a === 'string' ? undefined : a.due_date;
+                    return (
                     <div key={i} className="flex items-start gap-3 p-3 rounded-xl"
                       style={{
-                        background: a.priority === 'high' ? 'rgba(255,59,48,0.05)' : 'var(--bg-input)',
-                        border: `1px solid ${a.priority === 'high' ? 'rgba(255,59,48,0.15)' : 'var(--border-secondary)'}`,
+                        background: priority === 'high' ? 'rgba(255,59,48,0.05)' : 'var(--bg-input)',
+                        border: `1px solid ${priority === 'high' ? 'rgba(255,59,48,0.15)' : 'var(--border-secondary)'}`,
                       }}>
-                      <span className={`badge badge-${a.priority === 'high' ? 'red' : a.priority === 'medium' ? 'orange' : 'gray'} flex-shrink-0`}>{a.priority}</span>
-                      <span className="text-sm flex-1" style={{ color: 'var(--text-secondary)' }}>{a.action}</span>
-                      {a.due_date && <span className="text-xs flex-shrink-0" style={{ color: 'var(--text-tertiary)' }}>{a.due_date}</span>}
+                      <span className={`badge badge-${priority === 'high' ? 'red' : priority === 'medium' ? 'orange' : 'gray'} flex-shrink-0`}>{priority}</span>
+                      <span className="text-sm flex-1" style={{ color: 'var(--text-secondary)' }}>{actionText}</span>
+                      {dueDate && <span className="text-xs flex-shrink-0" style={{ color: 'var(--text-tertiary)' }}>{dueDate}</span>}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}

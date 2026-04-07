@@ -13,6 +13,9 @@ Requirements:
 
 import sys
 import os
+# Fix Windows cp1252 UnicodeEncodeError for emoji characters in print statements
+if sys.stdout.encoding and sys.stdout.encoding.lower() != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from dotenv import load_dotenv
@@ -98,7 +101,7 @@ def seed_all():
     db = SessionLocal()
 
     try:
-        print("🌱 Starting seed data insertion...")
+        print("[SEED] Starting seed data insertion...")
 
         # ── Clear existing data (Except emails, agent logs, agent events) ─────
         db.query(MetricsDaily).delete()
@@ -161,7 +164,7 @@ def seed_all():
                 job_level=random.choice(JOB_LEVELS),
                 phone=f"+1-{random.randint(200,999)}-{random.randint(100,999)}-{random.randint(1000,9999)}",
                 linkedin_url=f"https://linkedin.com/in/{first.lower()}{last.lower()}",
-                # lead_score=random.randint(20, 100),
+                lead_score=random.randint(50, 100),
                 lead_status=random.choice(["new", "contacted", "qualified", "nurture", "converted"]),
                 lead_source=random.choice(LEAD_SOURCES),
                 last_contact_at=rand_past_date(60),
@@ -350,7 +353,7 @@ def seed_all():
 
     except Exception as e:
         db.rollback()
-        print(f"\n❌ Error seeding data: {e}")
+        print(f"\n[ERROR] Error seeding data: {e}")
         raise
     finally:
         db.close()

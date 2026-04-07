@@ -86,6 +86,8 @@ export interface LeadQualificationResult {
     job_level?: string;
     seniority?: string;
     budget_likelihood?: string;
+    outreach_priority?: string;
+    recommended_action?: string;
     web_research_used?: boolean;
     enriched_at?: string;
     [key: string]: string | boolean | undefined; // allow any extra LLM fields
@@ -151,16 +153,19 @@ export interface CustomerSuccessResult {
     last_login: string;
   };
   upsell_opportunities: Array<{
-    type: string;
-    description: string;
-    confidence: number;
-    estimated_value: number;
+    type?: string;
+    description?: string;
+    suggestion?: string;
+    reason?: string;
+    confidence?: number | string;
+    estimated_value?: number;
+    product?: string;
   }>;
   recommended_actions: Array<{
-    priority: 'high' | 'medium' | 'low';
-    action: string;
+    priority?: 'high' | 'medium' | 'low';
+    action?: string;
     due_date?: string;
-  }>;
+  } | string>;
 }
 
 // ---- Meeting Scheduler ----

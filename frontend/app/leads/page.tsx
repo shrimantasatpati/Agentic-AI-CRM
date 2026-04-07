@@ -263,6 +263,35 @@ export default function LeadsPage() {
           headerExtra={leadSelector}
           resultNode={result && (
             <div className="space-y-4">
+              {/* Outreach Priority Banner */}
+              {result.enriched_data?.outreach_priority && (
+                <div className="rounded-xl p-3 flex items-center gap-3"
+                  style={{
+                    background: result.enriched_data.outreach_priority === 'immediate' ? 'rgba(255,59,48,0.08)'
+                              : result.enriched_data.outreach_priority === 'within_24h' ? 'rgba(255,149,0,0.08)'
+                              : 'rgba(52,199,89,0.08)',
+                    border: `1px solid ${
+                      result.enriched_data.outreach_priority === 'immediate' ? 'rgba(255,59,48,0.2)'
+                      : result.enriched_data.outreach_priority === 'within_24h' ? 'rgba(255,149,0,0.2)'
+                      : 'rgba(52,199,89,0.2)'
+                    }`,
+                  }}>
+                  <span className="text-lg">
+                    {result.enriched_data.outreach_priority === 'immediate' ? '🚨'
+                     : result.enriched_data.outreach_priority === 'within_24h' ? '⚡'
+                     : result.enriched_data.outreach_priority === 'nurture' ? '🌱' : '📋'}
+                  </span>
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-primary)' }}>
+                      Outreach Priority: {String(result.enriched_data.outreach_priority).replace('_', ' ').toUpperCase()}
+                    </p>
+                    {result.enriched_data?.recommended_action && (
+                      <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>{String(result.enriched_data.recommended_action)}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Score row */}
               <div className="apple-card flex items-center gap-6">
                 <div className="flex-col items-center text-center" style={{ minWidth: 120 }}>
@@ -298,12 +327,40 @@ export default function LeadsPage() {
                 </div>
               </div>
 
+              {/* Score Breakdown bars */}
+              {result.score_breakdown && Object.keys(result.score_breakdown).length > 0 && (
+                <div className="apple-card">
+                  <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Score Breakdown</p>
+                  <div className="space-y-2">
+                    {[
+                      { key: 'company_size', label: 'Company Size', max: 25 },
+                      { key: 'job_title', label: 'Job Title', max: 25 },
+                      { key: 'industry', label: 'Industry', max: 20 },
+                      { key: 'engagement', label: 'Engagement', max: 15 },
+                      { key: 'budget_signals', label: 'Budget Signals', max: 15 },
+                    ].map(({ key, label, max }) => {
+                      const val = (result.score_breakdown as Record<string, number>)[key] ?? 0;
+                      const pct = Math.min(100, (val / max) * 100);
+                      return (
+                        <div key={key} className="flex items-center gap-3">
+                          <span className="text-xs w-28 flex-shrink-0" style={{ color: 'var(--text-tertiary)' }}>{label}</span>
+                          <div className="flex-1 h-1.5 rounded-full" style={{ background: 'var(--bg-tertiary)' }}>
+                            <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: COLOR }} />
+                          </div>
+                          <span className="text-xs font-semibold w-8 text-right" style={{ color: COLOR }}>{val}/{max}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* Enriched data + routing */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="apple-card">
                   <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Enriched Data</p>
                   <div className="space-y-2">
-                    {Object.entries(result.enriched_data).map(([k, v]) => (
+                    {Object.entries(result.enriched_data).filter(([k]) => !['score_breakdown','outreach_priority','recommended_action','enriched_at','web_research_used'].includes(k)).map(([k, v]) => (
                       <div key={k} className="flex gap-2">
                         <span className="text-xs" style={{ color: 'var(--text-tertiary)', minWidth: 80, textTransform: 'capitalize' }}>{k.replace('_', ' ')}</span>
                         <span className="badge badge-blue">{String(v)}</span>

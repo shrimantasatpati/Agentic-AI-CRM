@@ -121,28 +121,52 @@ class LeadQualificationAgent(BaseAgent):
             if web_topics:
                 web_section += f"\nRelated: {'; '.join(web_topics[:3])}"
 
-        combined_prompt = f"""Analyze this lead and return a single JSON object with exactly these fields:
+        combined_prompt = f"""You are a B2B sales qualification expert. Analyze this inbound lead and return ONLY valid JSON.
 
-Lead Data:
-Email: {email}
-Name: {lead_data.get('name', lead_data.get('first_name', 'Unknown'))}
-Company Domain: {domain}
-Job Title: {lead_data.get('job_title', 'Unknown')}
+Lead Information:
+- Email: {email}
+- Domain: {domain}
+- Name: {lead_data.get('name', lead_data.get('first_name', 'Unknown'))} {lead_data.get('last_name', '')}
+- Job Title: {lead_data.get('job_title', 'Unknown')}
+- Company: {lead_data.get('company', domain)}
+- Lead Source: {lead_data.get('lead_source', 'Unknown')}
+- Phone: {lead_data.get('phone', 'Not provided')}
 {web_section}
 
-Return ONLY valid JSON in this exact format:
+SCORING RUBRIC (0-100):
+- 80-100: Enterprise + C-Suite/VP + High-value industry = Hot lead → Immediate outreach
+- 60-79:  Mid-market + Director/Manager + Tech/Finance = Warm lead → Priority follow-up
+- 40-59:  SMB + Manager + Any industry = Qualified → Standard nurture
+- 20-39:  Small company + IC + Low-value domain = Nurture only
+- 0-19:   Personal email / spam domain / no signals = Disqualify
+
+INDUSTRY VALUE RANKING (high → low):
+Technology, FinTech, Healthcare, SaaS, Cybersecurity > Manufacturing, Retail, E-commerce > Education, Non-profit, Government
+
+BUYING SIGNALS to detect:
+- Domain signals: company domain (not gmail) = B2B intent
+- Title signals: VP/Director/C-Suite = budget authority
+- Source signals: demo request / referral = high intent
+- Web signals: recent funding / growth / hiring = expansion mode
+
+Return ONLY this JSON (no extra text):
 {{
   "company_size": "small|medium|large|enterprise",
-  "industry": "Technology|Finance|Healthcare|Retail|Other",
+  "industry": "Technology|Finance|Healthcare|Retail|SaaS|Other",
   "seniority": "entry|mid|senior|executive",
   "budget_likelihood": "low|medium|high",
   "score": <integer 0-100>,
-  "signals": ["signal1", "signal2", "signal3"]
-}}
-
-Scoring guide: Enterprise+Executive+Tech = 80-100, Mid-market = 50-79, SMB = 30-49, Low-value = 0-29.
-Use the web research context to improve accuracy if available.
-Signals: identify buying intent indicators from email domain, job title, and web context."""
+  "signals": ["specific signal 1 referencing actual data", "signal 2", "signal 3"],
+  "score_breakdown": {{
+    "company_size": <0-25>,
+    "job_title": <0-25>,
+    "industry": <0-20>,
+    "engagement": <0-15>,
+    "budget_signals": <0-15>
+  }},
+  "outreach_priority": "immediate|within_24h|this_week|nurture|disqualify",
+  "recommended_action": "specific next action for the sales team"
+}}"""
 
         raw = await self.think(combined_prompt)
 
@@ -161,6 +185,9 @@ Signals: identify buying intent indicators from email domain, job title, and web
             "industry": parsed.get("industry", "unknown"),
             "seniority": parsed.get("seniority", "unknown"),
             "budget_likelihood": parsed.get("budget_likelihood", "unknown"),
+            "outreach_priority": parsed.get("outreach_priority", "this_week"),
+            "recommended_action": parsed.get("recommended_action", ""),
+            "score_breakdown": parsed.get("score_breakdown", {}),
             "enriched_at": self._get_timestamp(),
         }
         score = min(100, max(0, int(parsed.get("score", 50))))

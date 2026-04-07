@@ -104,10 +104,11 @@ class CustomerSuccessAgent(BaseAgent):
         """Single optimized LLM call: health_score + recommended_actions in one JSON response"""
         import json, re
 
-        combined_prompt = f"""Analyze this CRM customer and return ONLY a valid JSON object:
+        combined_prompt = f"""You are an expert Customer Success Manager. Analyze this CRM customer and return ONLY a valid JSON object with no extra text:
 
-Customer:
-- Plan: {customer_data.get('plan', 'unknown')}
+Customer: {customer_data.get('name', 'Unknown')}
+- Company: {customer_data.get('name', 'Unknown')}
+- Plan: {customer_data.get('plan', 'unknown')} (MRR: ${customer_data.get('mrr', 0):,.0f}/mo)
 - Logins/week: {customer_data.get('logins_per_week', 0)}
 - Features used: {customer_data.get('features_used', 0)}/{customer_data.get('total_features', 10)}
 - Days since login: {customer_data.get('days_since_login', 0)}
@@ -117,11 +118,14 @@ Customer:
 - Payment delays: {customer_data.get('payment_delays', 0)}
 - Usage trend: {customer_data.get('usage_trend', 'stable')}
 - Days to renewal: {customer_data.get('days_to_renewal', 999)}
+- Industry: {customer_data.get('industry', 'unknown')}
 
-Return exactly:
+Provide 3 specific, prioritized recommended actions referencing the customer name and their actual metrics (e.g. "Schedule QBR with {customer_data.get('name', 'team')} to review 60%% feature adoption gap").
+
+Return exactly this JSON:
 {{
   "health_score": <integer 0-100>,
-  "recommended_actions": ["action1", "action2", "action3"]
+  "recommended_actions": ["high-priority action", "medium-priority action", "growth action"]
 }}"""
 
         raw = await self.think(combined_prompt)
