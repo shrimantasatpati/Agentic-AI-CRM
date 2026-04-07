@@ -1,8 +1,12 @@
 <div align="center">
 
+<<<<<<< HEAD
 <img src="frontend/public/logo.png" alt="AI CRM Logo" width="100" />
 
 # AI CRM
+=======
+# 🤖 Synaptic CRM - Complete Agentic AI CRM Solution
+>>>>>>> ecf5d721604f2da8c578a60190d3bfad6cb5c0e9
 
 ### Production-Grade CRM Powered by Autonomous AI Agents
 
@@ -13,8 +17,6 @@
 [![Gemini](https://img.shields.io/badge/Gemini_2.5_Flash-4285F4?style=for-the-badge&logo=google&logoColor=white)](https://ai.google.dev/)
 [![SQLite](https://img.shields.io/badge/SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](https://www.sqlite.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](LICENSE)
-
-**Every agent makes real LLM calls. No hardcoded outputs. No mock data.**
 
 [Live Demo](#demo-walkthrough) · [Quick Start](#quick-start) · [Architecture](#architecture) · [API Reference](#api-reference)
 
@@ -454,7 +456,7 @@ Frontend runs at **http://localhost:3000**
 
 ### LLM Provider Selection
 
-The `MODEL_PROVIDER` env var forces a specific provider. Without it, the system auto-detects by checking for API keys in this order: **Groq → Gemini → xAI → Mock**.
+The `MODEL_PROVIDER` env var forces a specific provider. Without it, the system auto-detects by checking for API keys in this order: **Groq → Gemini → xAI → Mock mode**.
 
 ```env
 # Force Gemini (recommended — best reasoning quality)
@@ -602,7 +604,7 @@ ai-crm/
 2. In `backend/.env`:
    ```env
    GEMINI_API_KEY=AIza...
-   GEMINI_MODEL_NAME=gemini-2.5-flash-preview-04-17
+   GEMINI_MODEL_NAME=gemini-2.5-flash
    MODEL_PROVIDER=gemini
    ```
 
@@ -839,7 +841,7 @@ MIT © 2026 AI CRM
 
 <div align="center">
 
-**Built for modern revenue teams · Powered by Gemini 2.5 Flash**
+**Built for modern revenue teams · By Shrimanta Satpati**
 
 [⭐ Star this repo](https://github.com/your-org/ai-crm) · [🐛 Report a bug](https://github.com/your-org/ai-crm/issues) · [💡 Request a feature](https://github.com/your-org/ai-crm/issues)
 
