@@ -124,7 +124,7 @@ export default function PipelinePage() {
         {!dealsLoading && (
           <div className="flex items-center gap-4">
             <span className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest">{deals.length} found</span>
-            <div className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest text-right" style={{ width: 120 }}>Health Score</div>
+            <div className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest text-right pr-24" style={{ width: 140 }}>Health Score</div>
           </div>
         )}
       </div>
@@ -160,7 +160,7 @@ export default function PipelinePage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5">
                     <span className="text-[13px] font-700 truncate" style={{ color: 'var(--text-primary)', fontWeight: 700 }}>
-                      {d.name}
+                      {d.name.replace(/([a-f0-9]{4})[a-f0-9-]{28,}/gi, '$1')}
                     </span>
                     {selectedDeal?.id === d.id && <div className="w-1.5 h-1.5 rounded-full" style={{ background: COLOR }} />}
                   </div>
@@ -170,7 +170,7 @@ export default function PipelinePage() {
                     <span className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>${(d.value ?? 0).toLocaleString()}</span>
                   </div>
                 </div>
-                <div className="text-right flex-shrink-0" style={{ width: 120 }}>
+                <div className="text-right flex-shrink-0 pr-24" style={{ width: 140 }}>
                    <div className="text-[11px] font-bold" style={{ color: d.health_score >= 70 ? '#34c759' : d.health_score >= 40 ? '#ff9500' : '#ff3b30' }}>
                      {d.health_score}% Match
                    </div>

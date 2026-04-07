@@ -58,6 +58,13 @@ DEAL_STAGES  = ["prospecting", "qualification", "proposal", "negotiation", "clos
 MEETING_TYPES = ["discovery", "demo", "follow_up", "executive_review", "training"]
 PLANS        = ["Starter", "Professional", "Enterprise", "Custom"]
 
+DEAL_NAMES = [
+    "Deal Global Run", "AI 2027 Readiness", "Enterprise Rollout", 
+    "Q3 Growth Initiative", "Cloud Migration", "Market Expansion", 
+    "Platform Modernization", "Strategic Partnership", "Customer Retention",
+    "Digital Transformation", "Security Compliance", "Infrastructure Audit"
+]
+
 EMAIL_SUBJECTS = [
     "Interested in a demo", "Question about pricing", "Need support for integration",
     "Following up on our call", "Interested in your platform", "Renewal discussion",
@@ -160,7 +167,7 @@ def seed_all():
                 id=str(uuid.uuid4()),
                 company_id=contact.company_id,
                 contact_id=contact.id,
-                name=f"Deal - {contact.company_id} Q{random.randint(1,4)} {random.randint(2024,2026)}",
+                name=f"Deal - {random.choice(DEAL_NAMES)}",
                 value=value,
                 stage=stage,
                 probability={"prospecting": 10, "qualification": 25, "proposal": 50,

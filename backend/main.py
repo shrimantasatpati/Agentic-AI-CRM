@@ -720,29 +720,33 @@ async def sync_gmail_emails(limit: int = 20, db: Session = Depends(get_db), back
 
 
 @app.post("/api/emails/analyze-inbox")
-async def analyze_inbox_emails(limit: int = 10, db: Session = Depends(get_db)):
+async def analyze_inbox_emails(limit: int = 10, email_id: str = None, db: Session = Depends(get_db)):
     """
     Downstream automation: read unanalyzed inbound emails from CRM DB,
     run EmailIntelligenceAgent on each, store results back in the record.
-    Flow: Gmail Sync → DB → THIS endpoint → Agent LLM analysis → results in DB
+    If email_id is provided, only that specific email is analyzed.
     """
     from database.models import Email as EmailModel
     from sqlalchemy import desc
     try:
-        # Fetch unanalyzed inbound emails (no agent_result in metadata yet)
-        emails = (
-            db.query(EmailModel)
-            .filter(EmailModel.direction == "inbound")
-            .order_by(desc(EmailModel.created_at))
-            .limit(limit)
-            .all()
-        )
+        # Fetch unanalyzed inbound emails
+        query = db.query(EmailModel).filter(EmailModel.direction == "inbound")
+        
+        if email_id:
+            query = query.filter(EmailModel.id == email_id)
+        else:
+            query = query.order_by(desc(EmailModel.created_at))
+            
+        emails = query.limit(limit).all()
+        
         # Skip already-analyzed ones
         unanalyzed = [
             e for e in emails
             if not (e.extra_metadata or {}).get("agent_analyzed")
         ]
         if not unanalyzed:
+            if email_id:
+                 return {"status": "ok", "message": "Email already analyzed", "analyzed": 0}
             return {"status": "ok", "message": "No unanalyzed emails found", "analyzed": 0}
 
         results = []

@@ -131,10 +131,12 @@ export default function Sidebar() {
               </div>
             </div>
             <div className="flex flex-col">
-              <span className="text-[var(--text-primary)] font-900 text-2xl tracking-tight leading-none mb-1.5" style={{ fontWeight: 900 }}>
-                CRM
-              </span>
-              <span className="text-[11px] text-[var(--text-tertiary)] font-700 tracking-[0.15em] uppercase opacity-80">
+              <div className="flex items-baseline gap-2">
+                <span className="text-[var(--text-primary)] font-900 text-2xl tracking-tight leading-none" style={{ fontWeight: 900 }}>
+                  CRM
+                </span>
+              </div>
+              <span className="text-[10px] text-[var(--text-tertiary)] font-700 tracking-[0.12em] uppercase opacity-80 whitespace-nowrap mt-1">
                 Agentic Intelligence
               </span>
             </div>
@@ -144,7 +146,7 @@ export default function Sidebar() {
         {/* Nav items Organized by Category */}
         <div className="flex-1 overflow-y-auto p-3 space-y-6">
           {['Navigation', 'Agents'].map(category => (
-            <div key={category} className="space-y-1">
+            <div key={category} className={`space-y-1 ${category === 'Navigation' ? 'mt-4' : ''}`}>
               <div className="px-3 mb-2 flex items-center justify-between">
                 <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-tertiary)', opacity: 0.6 }}>
                   {category}

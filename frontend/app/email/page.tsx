@@ -95,16 +95,17 @@ function GmailBanner({ onSynced }: { onSynced: () => void }) {
 
 // ─── Main Page ───────────────────────────────────────────────────────────────
 export default function EmailPage() {
-  const [emails, setEmails] = useState<EmailRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [limit, setLimit] = useState(20);
-  const [error, setError] = useState<string | null>(null);
-  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [emails, setEmails]             = useState<EmailRow[]>([]);
+  const [loading, setLoading]           = useState(true);
+  const [isAnalyzing, setIsAnalyzing]   = useState(false);
+  const [limit, setLimit]               = useState(20);
   const [filterPriority, setFilterPriority] = useState<string>('all');
   
   // Track selected email for right pane
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const loadEmails = useCallback(async (n: number = limit) => {
     setLoading(true); setError(null);
@@ -117,9 +118,29 @@ export default function EmailPage() {
           setSelectedId(data[0].id);
       }
       setLastRefresh(new Date());
+
+      // AUTO-TRIGGER: If there are unanalyzed emails, trigger batch analysis immediately
+      const hasUnanalyzed = data.some((e: any) => !e.analyzed);
+      if (hasUnanalyzed && !isAnalyzing) {
+        triggerAutoAnalysis();
+      }
     } catch (e) { setError(String(e)); }
     finally { setLoading(false); }
-  }, [limit, selectedId]);
+  }, [limit, selectedId, isAnalyzing]);
+
+  const triggerAutoAnalysis = async () => {
+      if (isAnalyzing) return;
+      setIsAnalyzing(true);
+      try {
+          await fetch(`http://localhost:8000/api/emails/analyze-inbox?limit=5`, { method: 'POST' });
+          // Refresh after a delay to show results
+          setTimeout(() => loadEmails(), 2000);
+      } catch (err) {
+          console.error('Auto-analysis failed:', err);
+      } finally {
+          setIsAnalyzing(false);
+      }
+  };
 
   useEffect(() => { loadEmails(); }, []);
 
@@ -327,8 +348,20 @@ export default function EmailPage() {
                                 ))}
                             </div>
                         ) : (
-                            <div className="mb-6 p-4 rounded-xl bg-[var(--bg-tertiary)] border border-orange-500/20 text-orange-500 text-sm font-medium flex items-center gap-2">
-                                <Loader size={14} className="animate-spin" /> Waiting for Batch AI Analysis...
+                            <div className="mb-6">
+                                <div className="p-5 rounded-xl border border-orange-500/20 bg-orange-500/5 text-center">
+                                    <div className="flex flex-col items-center gap-3">
+                                        <div className="w-12 h-12 rounded-full bg-orange-500/10 flex items-center justify-center">
+                                            <Loader size={24} color="#ff9500" className="animate-spin" />
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-bold text-[var(--text-primary)]">AI Analysis in Progress...</p>
+                                            <p className="text-xs text-[var(--text-secondary)] mt-1">
+                                                Our agent is currently analyzing this message and matching it with CRM data.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         )}
 
