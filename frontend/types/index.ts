@@ -85,6 +85,11 @@ export interface LeadQualificationResult {
     industry?: string;
     company_size?: string;
     job_level?: string;
+    seniority?: string;
+    budget_likelihood?: string;
+    web_research_used?: boolean;
+    enriched_at?: string;
+    [key: string]: string | boolean | undefined; // allow any extra LLM fields
   };
   routing: {
     team: string;

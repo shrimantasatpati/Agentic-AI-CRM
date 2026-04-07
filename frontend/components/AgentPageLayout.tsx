@@ -66,6 +66,7 @@ export default function AgentPageLayout({
   const [running, setRunning]   = useState(false);
   const [totalMs, setTotalMs]   = useState<number | null>(null);
   const [dynamicExamples, setDynamicExamples] = useState<ExampleInput[]>([]);
+  const [animationComplete, setAnimationComplete] = useState(false); // gates result display
 
   // Real execution steps returned from the API — null until API responds
   const [realSteps, setRealSteps] = useState<RealStep[] | null>(null);
@@ -88,7 +89,8 @@ export default function AgentPageLayout({
   const handleRun = async () => {
     setRunning(true);
     setTotalMs(null);
-    setRealSteps(null); // Reset real steps for new run
+    setRealSteps(null);     // Reset real steps for new run
+    setAnimationComplete(false); // Hide results until animation done
 
     const startTime = Date.now();
     try {
@@ -115,6 +117,7 @@ export default function AgentPageLayout({
 
   const handleAnimationComplete = (ms: number) => {
     setTotalMs(ms);
+    setAnimationComplete(true);  // Now reveal the results
   };
 
   const applyExample = (ex: ExampleInput) => {
@@ -242,11 +245,11 @@ export default function AgentPageLayout({
 
         {/* PANEL 3 — Results */}
         <div className="flex-1 min-w-0">
-          {isComplete ? (
+          {isComplete && animationComplete ? (
             <div className="animate-fade-in-up">
               {resultNode}
             </div>
-          ) : running ? (
+          ) : running || (isComplete && !animationComplete) ? (
             <div
               className="apple-card flex flex-col items-center justify-center"
               style={{ minHeight: 300, gap: 16 }}

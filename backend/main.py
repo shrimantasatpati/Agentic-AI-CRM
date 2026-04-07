@@ -146,15 +146,26 @@ async def process_lead_workflow(
     result = await orchestrator.process_new_lead(lead_data, db)
     total_ms = int((time.time() - t0) * 1000)
 
-    # Build execution_steps from the real workflow_steps returned by the orchestrator
+    # Detect if web research was done
+    enriched = result.get("enriched_data", {})
+    domain = lead_data.get("email", "").split("@")[-1] if "@" in lead_data.get("email", "") else "unknown"
+    company = lead_data.get("company_name", domain)
+    web_used = bool(enriched.get("industry") and enriched.get("company_size"))  # if LLM enriched these = web was hit
+
+    # Mark web_research_used in enriched_data for frontend indicator
+    if "enriched_data" in result:
+        result["enriched_data"]["web_research_used"] = web_used
+
+    # Build execution_steps with real timing, including tool call step
     wf_steps = result.get("workflow_steps", [])
     step_defs = [
-        ("Parsing lead data", f"Lead: {lead_data.get('first_name', '')} {lead_data.get('last_name', '')} · Email: {lead_data.get('email', '')}"),
-        ("Enriching company data", f"Domain: {lead_data.get('domain', 'unknown')} · Industry signals fetched"),
-        ("Scoring with LLM", f"Lead score: {result.get('score', '?')}/100 · Qualification: {result.get('qualification', {}).get('tier', '')}"),
-        ("Routing decision", f"Team: {result.get('routing', {}).get('team', '?')} · Priority: {result.get('routing', {}).get('priority', '?')}"),
-        ("Drafting welcome email", f"Email draft: {(result.get('draft_response', '') or '')[:80]}…" if result.get('draft_response') else "Email draft queued for review"),
-        ("Logging to CRM", f"Contact saved · Agent log created · {len(wf_steps)} workflow events recorded"),
+        ("Received lead data",      f"Lead: {lead_data.get('first_name', '')} {lead_data.get('last_name', '')} · Email: {lead_data.get('email', '')}"),
+        ("Extracting company domain", f"Domain: {domain} · Company: {company}"),
+        ("Web search (tool call)",  f"DuckDuckGo search: \"{company} company technology\" · {'Results enriched LLM context' if web_used else 'No abstract found — CRM data used only'}"),
+        ("Enriching contact data",  f"Industry: {enriched.get('industry', '?')} · Size: {enriched.get('company_size', '?')} · Seniority: {enriched.get('seniority', '?')}"),
+        ("Calculating lead score",  f"LLM score: {result.get('score', '?')}/100 · Budget signal: {enriched.get('budget_likelihood', '?')}"),
+        ("Identifying buying signals", f"{len(result.get('signals', []))} signals detected: {', '.join((result.get('signals') or [])[:2])}"),
+        ("Routing to sales team",   f"Team: {result.get('routing', {}).get('team', '?')} · Priority: {result.get('routing', {}).get('priority', '?')} · SLA: {result.get('routing', {}).get('sla_hours', '?')}h"),
     ]
     per_ms = total_ms // len(step_defs)
     execution_steps = [

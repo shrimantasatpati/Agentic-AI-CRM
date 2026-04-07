@@ -113,7 +113,7 @@ export default function CustomersPage() {
             Select Customer from CRM {!customersLoading && <span className="ml-1 opacity-60 font-medium">({customers.length} found)</span>}
           </h3>
         </div>
-        {!customersLoading && <div className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest text-right" style={{ minWidth: 90 }}>Health Score</div>}
+        {!customersLoading && <div className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest text-right" style={{ minWidth: 90 }}>DB Score</div>}
       </div>
       
       {customersLoading ? (
@@ -160,9 +160,9 @@ export default function CustomersPage() {
                 </div>
                  <div className="text-right flex-shrink-0" style={{ minWidth: 90 }}>
                     <div className="text-[11px] font-bold" style={{ color: c.health_score >= 70 ? '#34c759' : c.health_score >= 40 ? '#ff9500' : '#ff3b30' }}>
-                      {c.health_score}% Match
+                      {c.health_score}/100
                     </div>
-                    <div className="text-[9px] text-[var(--text-tertiary)] font-bold uppercase tracking-tight">Health Score</div>
+                    <div className="text-[9px] text-[var(--text-tertiary)] font-bold uppercase tracking-tight">DB Score</div>
                  </div>
               </div>
             </button>

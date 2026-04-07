@@ -3,7 +3,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import { Check, ArrowRight, Loader, Users, Target } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import AgentPageLayout from '@/components/AgentPageLayout';
 import ScoreGauge from '@/components/ScoreGauge';
 import type { LeadQualificationResult } from '@/types';
@@ -13,11 +12,11 @@ const COLOR = '#0066cc';
 const STEPS = [
   { name: 'Received lead data', output: 'Lead email, name, company, and message parsed · CRM entry initiated' },
   { name: 'Extracting company domain', output: 'Domain extracted from email · Company profile lookup started' },
-  { name: 'Enriching contact data', output: 'Industry, company size, and seniority level identified from CRM' },
-  { name: 'Calculating lead score', output: 'LLM scored lead on job title, intent, company fit, and urgency' },
-  { name: 'Identifying buying signals', output: 'Buying signals analyzed: demo request, urgency, budget, seniority' },
-  { name: 'Routing to sales team', output: 'Lead routed to team based on score · Priority and SLA assigned' },
-  { name: 'Notifying downstream agents', output: 'Email Intelligence Agent triggered · CRM entry saved to database' },
+  { name: 'Web search (tool call)', output: 'DuckDuckGo API called · Company tech profile and industry context retrieved' },
+  { name: 'Enriching contact data', output: 'Industry, company size, seniority, and budget likelihood identified by LLM' },
+  { name: 'Calculating lead score', output: 'LLM scored lead using enriched data + web research context (0–100)' },
+  { name: 'Identifying buying signals', output: 'Buying intent signals extracted: demo request, urgency, budget, decision-maker' },
+  { name: 'Routing to sales team', output: 'Lead routed based on score · Priority, SLA, and next action assigned' },
 ];
 
 const EXAMPLES = [
@@ -136,12 +135,7 @@ export default function LeadsPage() {
     return liveResult.execution_steps ?? null;
   }, [selectedLead]);
 
-  const scoreData = result
-    ? Object.entries(result.score_breakdown).map(([k, v]) => ({
-        name: k.replace('_', ' '),
-        value: v,
-      }))
-    : [];
+
 
   const leadSelector = (
     <div className="apple-card mb-4 overflow-hidden" style={{ padding: 0 }}>
@@ -152,7 +146,7 @@ export default function LeadsPage() {
             Select Lead from CRM {!leadsLoading && <span className="ml-1 opacity-60 font-medium">({leads.length} found)</span>}
           </h3>
         </div>
-        {!leadsLoading && <div className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest text-right" style={{ minWidth: 90 }}>Lead Fit Score</div>}
+        {!leadsLoading && <div className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest text-right" style={{ minWidth: 90 }}>Stored Score</div>}
       </div>
       
       {leadsLoading ? (
@@ -198,9 +192,9 @@ export default function LeadsPage() {
                 </div>
                  <div className="text-right flex-shrink-0" style={{ minWidth: 90 }}>
                     <div className="text-[11px] font-bold" style={{ color: l.lead_score >= 70 ? '#34c759' : l.lead_score >= 40 ? '#ff9500' : '#ff3b30' }}>
-                      {l.lead_score}% Match
+                      {l.lead_score}/100
                     </div>
-                    <div className="text-[9px] text-[var(--text-tertiary)] font-bold uppercase tracking-tight">Fit Score</div>
+                    <div className="text-[9px] text-[var(--text-tertiary)] font-bold uppercase tracking-tight">DB Score</div>
                  </div>
               </div>
             </button>
@@ -261,16 +255,32 @@ export default function LeadsPage() {
           <div className="space-y-4">
             {/* Score row */}
             <div className="apple-card flex items-center gap-6">
-              <ScoreGauge score={result.score} size={120} label="Score" />
+              <div className="flex-col items-center text-center" style={{ minWidth: 120 }}>
+                <ScoreGauge score={result.score} size={110} label="AI Score" />
+                <p className="text-[10px] mt-1 font-semibold" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Live LLM Score</p>
+              </div>
               <div className="flex-1">
-                <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Score Breakdown</p>
-                <ResponsiveContainer width="100%" height={90}>
-                  <BarChart data={scoreData} layout="vertical" margin={{ left: 0, right: 16, top: 0, bottom: 0 }}>
-                    <XAxis type="number" domain={[0, 30]} tick={false} axisLine={false} />
-                    <YAxis dataKey="name" type="category" tick={{ fontSize: 11, fill: 'var(--text-secondary)' }} axisLine={false} tickLine={false} width={100} />
-                    <Bar dataKey="value" fill={COLOR} radius={[0, 4, 4, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+                <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>AI Enrichment Signals</p>
+                <div className="space-y-2">
+                  {[
+                    { label: 'Company Size', value: result.enriched_data?.company_size || '—', icon: '🏢' },
+                    { label: 'Industry', value: result.enriched_data?.industry || '—', icon: '🏭' },
+                    { label: 'Seniority', value: result.enriched_data?.seniority || '—', icon: '👤' },
+                    { label: 'Budget Signal', value: result.enriched_data?.budget_likelihood || '—', icon: '💰' },
+                    { label: 'Domain', value: result.enriched_data?.domain || '—', icon: '🌐' },
+                  ].map(({ label, value, icon }) => (
+                    <div key={label} className="flex items-center gap-2">
+                      <span style={{ fontSize: 13 }}>{icon}</span>
+                      <span className="text-xs" style={{ color: 'var(--text-tertiary)', minWidth: 90 }}>{label}</span>
+                      <span className="badge badge-blue" style={{ fontSize: 11 }}>{String(value)}</span>
+                    </div>
+                  ))}
+                </div>
+                {result.enriched_data?.web_research_used && (
+                  <div className="mt-3 flex items-center gap-2 text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
+                    <span>🔍</span><span>Web research used in scoring (DuckDuckGo)</span>
+                  </div>
+                )}
               </div>
             </div>
 

@@ -119,7 +119,7 @@ export default function PipelinePage() {
         {!dealsLoading && (
           <div className="flex items-center gap-4">
             <span className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest">{deals.length} found</span>
-            <div className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest text-right" style={{ minWidth: 90 }}>Health Score</div>
+            <div className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest text-right" style={{ minWidth: 90 }}>DB Score</div>
           </div>
         )}
       </div>
@@ -167,9 +167,9 @@ export default function PipelinePage() {
                 </div>
                 <div className="text-right flex-shrink-0" style={{ minWidth: 90 }}>
                    <div className="text-[11px] font-bold" style={{ color: d.health_score >= 70 ? '#34c759' : d.health_score >= 40 ? '#ff9500' : '#ff3b30' }}>
-                     {d.health_score}% Match
+                     {d.health_score}/100
                    </div>
-                   <div className="text-[9px] text-[var(--text-tertiary)] font-bold uppercase tracking-tight">Health Score</div>
+                   <div className="text-[9px] text-[var(--text-tertiary)] font-bold uppercase tracking-tight">DB Score</div>
                 </div>
               </div>
             </button>
