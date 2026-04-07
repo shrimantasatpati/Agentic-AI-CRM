@@ -119,14 +119,23 @@ export default function LeadsPage() {
     setResult(filled);
     setIsComplete(true);
 
+    const executionSteps = liveResult.execution_steps ?? null;
+
+    // Fire auto-email toast AFTER step animation finishes (not immediately after API)
     const score = filled.score ?? 0;
     if (score >= 70) {
+      // Sum real step durations so toast appears after animation ends
+      const animationMs = Array.isArray(executionSteps)
+        ? executionSteps.reduce((sum: number, s: any) => sum + (s.durationMs ?? 400), 0)
+        : 3000;
       const toEmail = filled.email || formData.email || 'the lead';
-      setEmailToast(`✉️ Auto-email sent to ${toEmail} · Score: ${score}/100 · Priority: ${filled.routing?.priority?.toUpperCase() || 'HIGH'}`);
-      setTimeout(() => setEmailToast(null), 7000);
+      setTimeout(() => {
+        setEmailToast(`✉️ Auto-email sent to ${toEmail} · Score: ${score}/100 · Priority: ${filled.routing?.priority?.toUpperCase() || 'HIGH'}`);
+        setTimeout(() => setEmailToast(null), 7000);
+      }, animationMs + 200); // +200ms buffer after last step
     }
 
-    return liveResult.execution_steps ?? null;
+    return executionSteps;
   }, [selectedLead]);
 
   // ─── Lead Selector Panel ────────────────────────────────────────────────────

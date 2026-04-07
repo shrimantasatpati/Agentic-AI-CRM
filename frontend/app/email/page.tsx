@@ -476,27 +476,8 @@ export default function EmailPage() {
                                     </button>
                                 </div>
 
-                                {/* Agentic execution steps */}
-                                <div className="px-3 pt-3 flex flex-wrap gap-2">
-                                    {[
-                                        { step: '1', label: 'Draft Generated', status: 'done' },
-                                        { step: '2', label: 'Quality Validated', status: 'done' },
-                                        { step: '3', label: 'Salutation Added', status: 'done' },
-                                        { step: '4', label: 'Auto-Sent', status: 'done' },
-                                    ].map(s => (
-                                        <div key={s.step} className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold"
-                                            style={{ background: 'rgba(52,199,89,0.1)', color: '#34c759', border: '1px solid rgba(52,199,89,0.2)' }}>
-                                            <Check size={9} />
-                                            {s.label}
-                                        </div>
-                                    ))}
-                                </div>
-
                                 {/* Draft (read-only — already sent by agent) */}
                                 <div className="p-3 bg-[var(--bg-primary)]">
-                                    <p className="text-[10px] font-semibold uppercase tracking-widest mb-2" style={{ color: 'var(--text-tertiary)' }}>
-                                        Finalized Draft — Sent by AI Agent with "AI CRM Team" Signature
-                                    </p>
                                     <div className="w-full text-sm whitespace-pre-wrap rounded-lg p-3"
                                         style={{ color: 'var(--text-secondary)', lineHeight: 1.6, minHeight: 120,
                                                  background: 'var(--bg-tertiary)', border: '1px solid var(--border-primary)' }}>
