@@ -122,21 +122,20 @@ export default function Sidebar() {
       {/* Sidebar */}
       <nav className={`sidebar ${open ? 'open' : ''}`}>
         {/* Logo Section */}
-        <div className="p-8">
-          <Link href="/" className="group flex items-center gap-4 no-underline" onClick={() => setOpen(false)}>
-            <div className="relative">
-              <div className="absolute inset-0 bg-[var(--blue-primary)] blur-xl opacity-20 group-hover:opacity-40 transition-opacity" />
-              <div className="relative w-14 h-14 rounded-2xl bg-gradient-to-br from-[var(--blue-primary)] to-[#5e5ce6] flex items-center justify-center shadow-lg shadow-blue-500/20 transform group-hover:scale-105 transition-transform">
-                <span className="text-white font-900 text-3xl tracking-tighter" style={{ fontWeight: 900 }}>AI</span>
+        <div className="px-6 py-6">
+          <Link href="/" className="group flex items-center gap-3 no-underline" onClick={() => setOpen(false)}>
+            <div className="relative flex-shrink-0">
+              <div className="absolute inset-0 bg-[var(--blue-primary)] blur-xl opacity-20 group-hover:opacity-40 transition-opacity rounded-2xl" />
+              <div className="relative w-12 h-12 rounded-2xl overflow-hidden shadow-lg shadow-blue-500/20 transform group-hover:scale-105 transition-transform">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/favicon.ico" alt="AI CRM Logo" width={48} height={48} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
               </div>
             </div>
-            <div className="flex flex-col">
-              <div className="flex items-baseline gap-2">
-                <span className="text-[var(--text-primary)] font-900 text-2xl tracking-tight leading-none" style={{ fontWeight: 900 }}>
-                  CRM
-                </span>
-              </div>
-              <span className="text-[10px] text-[var(--text-tertiary)] font-700 tracking-[0.12em] uppercase opacity-80 whitespace-nowrap mt-1">
+            <div className="flex flex-col justify-center">
+              <span className="text-[var(--text-primary)] font-900 text-xl tracking-tight leading-none" style={{ fontWeight: 900 }}>
+                AI CRM
+              </span>
+              <span className="text-[9px] text-[var(--text-tertiary)] font-700 tracking-[0.12em] uppercase opacity-70 whitespace-nowrap mt-0.5">
                 Agentic Intelligence
               </span>
             </div>
@@ -146,7 +145,7 @@ export default function Sidebar() {
         {/* Nav items Organized by Category */}
         <div className="flex-1 overflow-y-auto p-3 space-y-6">
           {['Navigation', 'Agents'].map(category => (
-            <div key={category} className={`space-y-1 ${category === 'Navigation' ? 'mt-4' : ''}`}>
+            <div key={category} className={`space-y-1 ${category === 'Navigation' ? 'mt-6' : ''}`}>
               <div className="px-3 mb-2 flex items-center justify-between">
                 <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-tertiary)', opacity: 0.6 }}>
                   {category}

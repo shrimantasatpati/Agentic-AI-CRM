@@ -14,6 +14,12 @@ interface ExampleInput {
   data: Record<string, string>;
 }
 
+export interface RealStep {
+  name: string;
+  output: string;
+  durationMs: number;
+}
+
 interface AgentPageLayoutProps {
   // Agent identity
   agentName: string;
@@ -33,20 +39,21 @@ interface AgentPageLayoutProps {
   defaultValues: Record<string, string>;
   examples: ExampleInput[];
 
-  // Steps
+  // Steps (static step definitions — used as labels)
   steps: StepDef[];
 
   // Optional extra content rendered below the description (e.g. OAuth banners)
   headerExtra?: React.ReactNode;
 
   // API call + result renderer
-  onRun: (formData: Record<string, string>) => Promise<void>;
+  // onRun must return the real execution steps from the API (or null)
+  onRun: (formData: Record<string, string>) => Promise<RealStep[] | null | void>;
   resultNode: React.ReactNode;
   isComplete: boolean;
   isReady?: boolean;
   error?: string | null;
   onRetry?: () => void;
-  agentId?: string; // Backend name for dynamic examples (e.g. LeadQualificationAgent)
+  agentId?: string;
   externalFillValues?: Record<string, string> | null;
 }
 
@@ -59,6 +66,9 @@ export default function AgentPageLayout({
   const [running, setRunning]   = useState(false);
   const [totalMs, setTotalMs]   = useState<number | null>(null);
   const [dynamicExamples, setDynamicExamples] = useState<ExampleInput[]>([]);
+
+  // Real execution steps returned from the API — null until API responds
+  const [realSteps, setRealSteps] = useState<RealStep[] | null>(null);
 
   useEffect(() => {
     if (externalFillValues) {
@@ -75,22 +85,29 @@ export default function AgentPageLayout({
       .catch(() => {});
   }, [agentId]);
 
-  // resolveAnimRef: holds the resolver that fires when animation finishes
-  const resolveAnimRef = useRef<((ms: number) => void) | null>(null);
-
   const handleRun = async () => {
     setRunning(true);
     setTotalMs(null);
-    // Create a promise that resolves when WorkflowSteps animation completes
-    const animDone = new Promise<number>((resolve) => {
-      resolveAnimRef.current = resolve;
-    });
-    // Run API call and wait for animation — both must finish before we stop
+    setRealSteps(null); // Reset real steps for new run
+
+    const startTime = Date.now();
     try {
-      await Promise.all([
-        onRun(formData).catch(() => { /* error handled by parent */ }),
-        animDone,
-      ]);
+      // Call onRun — waits for REAL LLM result
+      const returnedSteps = await onRun(formData).catch(() => null);
+
+      // Store real steps from API — WorkflowSteps will animate these
+      if (returnedSteps && Array.isArray(returnedSteps) && returnedSteps.length > 0) {
+        setRealSteps(returnedSteps);
+      } else {
+        // If no steps returned, build generic steps with real timing
+        const elapsed = Date.now() - startTime;
+        const genericSteps: RealStep[] = steps.map((s, i) => ({
+          name: s.name,
+          output: s.output,
+          durationMs: Math.round(elapsed / steps.length),
+        }));
+        setRealSteps(genericSteps);
+      }
     } finally {
       setRunning(false);
     }
@@ -98,11 +115,6 @@ export default function AgentPageLayout({
 
   const handleAnimationComplete = (ms: number) => {
     setTotalMs(ms);
-    // Unblock handleRun so it can call setRunning(false)
-    if (resolveAnimRef.current) {
-      resolveAnimRef.current(ms);
-      resolveAnimRef.current = null;
-    }
   };
 
   const applyExample = (ex: ExampleInput) => {
@@ -177,7 +189,7 @@ export default function AgentPageLayout({
               }}
             >
               {running ? (
-                <><div className="step-spinner" style={{ borderTopColor: '#fff', width: 14, height: 14 }} /> Running...</>
+                <><div className="step-spinner" style={{ borderTopColor: '#fff', width: 14, height: 14 }} /> Running Agent…</>
               ) : (
                 <>▶ Run Agent</>
               )}
@@ -223,6 +235,7 @@ export default function AgentPageLayout({
               color={agentColor}
               running={running}
               onComplete={handleAnimationComplete}
+              realSteps={realSteps}
             />
           </div>
         </div>
@@ -232,6 +245,17 @@ export default function AgentPageLayout({
           {isComplete ? (
             <div className="animate-fade-in-up">
               {resultNode}
+            </div>
+          ) : running ? (
+            <div
+              className="apple-card flex flex-col items-center justify-center"
+              style={{ minHeight: 300, gap: 16 }}
+            >
+              <div className="step-spinner" style={{ borderTopColor: agentColor, width: 32, height: 32 }} />
+              <p className="text-sm font-semibold" style={{ color: agentColor }}>Agent Running…</p>
+              <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                Calling LLM — real analysis in progress
+              </p>
             </div>
           ) : (
             <div

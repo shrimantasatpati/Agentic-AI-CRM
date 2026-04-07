@@ -1,6 +1,6 @@
 'use client';
 
-import { useReducer, useEffect } from 'react';
+import { useReducer, useEffect, useRef } from 'react';
 import { Check, AlertCircle } from 'lucide-react';
 import type { ExecutionStep } from '@/types';
 
@@ -9,7 +9,8 @@ type Action =
   | { type: 'START_STEP'; index: number }
   | { type: 'COMPLETE_STEP'; index: number; output: string; durationMs: number }
   | { type: 'ERROR_STEP'; index: number; output: string }
-  | { type: 'RESET' };
+  | { type: 'RESET' }
+  | { type: 'REPLAY_REAL'; steps: Array<{ name: string; output: string; durationMs: number }> };
 
 function reducer(state: ExecutionStep[], action: Action): ExecutionStep[] {
   switch (action.type) {
@@ -40,47 +41,58 @@ interface WorkflowStepsProps {
   color: string;
   running: boolean;
   onComplete?: (totalMs: number) => void;
+  // When provided, replays these real steps (from API response) in animated sequence
+  realSteps?: Array<{ name: string; output: string; durationMs: number }> | null;
 }
 
-export default function WorkflowSteps({ steps, color, running, onComplete }: WorkflowStepsProps) {
+export default function WorkflowSteps({ steps, color, running, onComplete, realSteps }: WorkflowStepsProps) {
   const [state, dispatch] = useReducer(
     reducer,
     steps.map((s, i) => ({ id: i, name: s.name, status: 'pending' as const }))
   );
 
+  const animRef = useRef<boolean>(false);
+
+  // Phase 1: While API is running, show a "pending → running" shimmer on first step only
   useEffect(() => {
     if (!running) return;
+    dispatch({ type: 'RESET' });
+    animRef.current = false;
+    // Start the first step as "running" immediately so the user sees activity
+    dispatch({ type: 'START_STEP', index: 0 });
+  }, [running]);
 
-    // Reset first
+  // Phase 2: Once real steps arrive from the API response, replay them in animated sequence
+  useEffect(() => {
+    if (!realSteps || realSteps.length === 0) return;
+    if (animRef.current) return; // Don't replay if already replaying
+    animRef.current = true;
+
     dispatch({ type: 'RESET' });
 
     let cancelled = false;
     const startTime = Date.now();
 
-    const run = async () => {
+    const replay = async () => {
       for (let i = 0; i < steps.length; i++) {
         if (cancelled) return;
 
-        // Mark as running
         dispatch({ type: 'START_STEP', index: i });
 
-        // Simulate processing time (300–800ms varies by step)
-        const delay = 300 + Math.random() * 500;
-        await new Promise((r) => setTimeout(r, delay));
+        // Use real timing from the API — each step shown for its real duration
+        // But cap at 1200ms per step so it doesn't feel too slow in replay
+        const realStep = realSteps[i];
+        const displayMs = realStep ? Math.min(realStep.durationMs || 600, 1200) : 600;
 
+        await new Promise((r) => setTimeout(r, displayMs));
         if (cancelled) return;
-        const stepStart = Date.now();
-        const durationMs = Math.round(delay);
 
-        dispatch({
-          type: 'COMPLETE_STEP',
-          index: i,
-          output: steps[i].output,
-          durationMs,
-        });
+        const outputText = realStep ? realStep.output : steps[i].output;
+        const durationMs = realStep ? (realStep.durationMs || displayMs) : displayMs;
 
-        // Small gap between steps
-        await new Promise((r) => setTimeout(r, 120));
+        dispatch({ type: 'COMPLETE_STEP', index: i, output: outputText, durationMs });
+
+        await new Promise((r) => setTimeout(r, 100));
       }
 
       if (!cancelled && onComplete) {
@@ -88,10 +100,10 @@ export default function WorkflowSteps({ steps, color, running, onComplete }: Wor
       }
     };
 
-    run();
+    replay();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [running]);
+  }, [realSteps]);
 
   const totalMs = state.reduce((sum, s) => sum + (s.durationMs || 0), 0);
   const allComplete = state.every((s) => s.status === 'complete');
@@ -151,8 +163,16 @@ export default function WorkflowSteps({ steps, color, running, onComplete }: Wor
             <Check size={10} color="#fff" />
           </div>
           <span className="text-xs font-semibold" style={{ color }}>
-            Completed in {totalMs}ms
+            Completed in {totalMs}ms — Real LLM execution
           </span>
+        </div>
+      )}
+
+      {/* Loading indicator while API is running and no real steps yet */}
+      {running && !allComplete && !realSteps && (
+        <div className="flex items-center gap-2 mt-2 pt-2" style={{ borderTop: '1px solid var(--border-secondary)', opacity: 0.6 }}>
+          <div className="step-spinner" style={{ borderTopColor: color, width: 12, height: 12 }} />
+          <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Waiting for LLM response…</span>
         </div>
       )}
     </div>

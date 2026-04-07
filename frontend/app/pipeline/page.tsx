@@ -56,23 +56,25 @@ export default function PipelinePage() {
   }, []);
 
   const handleRun = useCallback(async (formData: Record<string, string>) => {
-    // Prioritize selected deal ID if the name matches, otherwise use manual input
-    const targetId = selectedDeal && formData.deal_name === selectedDeal.name ? selectedDeal.id : formData.deal_id;
-    const targetName = formData.deal_name || (selectedDeal ? selectedDeal.name : 'Unknown Deal');
+    // Use selected deal ID if available, otherwise fallback to form input
+    const targetId = selectedDeal?.id || formData.deal_id;
+    const targetName = selectedDeal?.name || formData.deal_name || 'Unknown Deal';
 
     setError(null);
     setIsComplete(false);
     setCheckedActions(new Set());
 
-    // If we have a targetId, we can run sync. Otherwise simulation string.
-    let res = null;
-    if (targetId) {
-      res = await fetch(`http://localhost:8000/api/agents/analyze-deal/${targetId}/sync`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      }).then(r => r.ok ? r.json() : null).catch(() => null);
+    if (!targetId) {
+      setError('Please select a deal from the list above or enter a Deal ID.');
+      setIsComplete(true);
+      return null;
     }
+
+    const res = await fetch(`http://localhost:8000/api/agents/analyze-deal/${targetId}/sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    }).then(r => r.ok ? r.json() : null).catch(() => null);
 
     if (res) {
       setResult({
@@ -80,27 +82,20 @@ export default function PipelinePage() {
         deal_name: targetName,
         health_score: res.health_score ?? (selectedDeal?.health_score || 50),
         close_probability: res.close_probability ?? 50,
-        is_stalled: res.is_stalled ?? (selectedDeal?.is_stalled || false),
+        is_stalled: res.is_stalled ?? false,
         risk_factors: res.risk_factors ?? [],
         next_actions: res.next_actions ?? [],
         forecast_close_date: res.forecast_close_date ?? '—',
         recommendations: res.recommendations ?? [],
       });
+      setIsComplete(true);
+      // Return real execution steps so WorkflowSteps can replay them
+      return res.execution_steps ?? null;
     } else {
-      setError('Agent did not return a result for the provided Deal. Please verify inputs or use Mock Data.');
-      setResult({
-        deal_id: targetId || 'manual-deal',
-        deal_name: targetName,
-        health_score: 50,
-        close_probability: 50,
-        is_stalled: false,
-        risk_factors: [],
-        next_actions: ['Connect backend and re-run agent'],
-        forecast_close_date: '—',
-        recommendations: [],
-      });
+      setError('Agent did not return a result. Ensure the backend is running.');
+      setIsComplete(true);
+      return null;
     }
-    setIsComplete(true);
   }, [selectedDeal]);
 
   const toggleAction = (i: number) => {
@@ -124,7 +119,7 @@ export default function PipelinePage() {
         {!dealsLoading && (
           <div className="flex items-center gap-4">
             <span className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest">{deals.length} found</span>
-            <div className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest text-right pr-24" style={{ width: 140 }}>Health Score</div>
+            <div className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest text-right" style={{ minWidth: 90 }}>Health Score</div>
           </div>
         )}
       </div>
@@ -170,7 +165,7 @@ export default function PipelinePage() {
                     <span className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>${(d.value ?? 0).toLocaleString()}</span>
                   </div>
                 </div>
-                <div className="text-right flex-shrink-0 pr-24" style={{ width: 140 }}>
+                <div className="text-right flex-shrink-0" style={{ minWidth: 90 }}>
                    <div className="text-[11px] font-bold" style={{ color: d.health_score >= 70 ? '#34c759' : d.health_score >= 40 ? '#ff9500' : '#ff3b30' }}>
                      {d.health_score}% Match
                    </div>

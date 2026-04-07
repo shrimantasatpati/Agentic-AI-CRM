@@ -145,20 +145,8 @@ export default function SourceSystemsPage() {
           <p className="text-sm text-[var(--text-secondary)] mb-4 leading-relaxed">
             Programmatically push data into the AI CRM via secure authenticated endpoints.
           </p>
-          <div className="space-y-3">
-            <div className="bg-[var(--bg-tertiary)] p-3 rounded-lg border border-[var(--border-primary)]">
-              <code className="text-[10px] text-[var(--text-primary)]">POST /api/sources/import/rest</code>
-            </div>
-            <div className="space-y-1.5">
-               <label className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-tertiary)]">External Endpoint</label>
-               <input 
-                 type="text" 
-                 placeholder="https://api.your-system.com/crm/push"
-                 className="apple-input w-full text-xs py-2 px-3 bg-[var(--bg-tertiary)]"
-                 readOnly
-                 value="https://api.ai-crm.io/v1/ingest"
-               />
-            </div>
+          <div className="bg-[var(--bg-tertiary)] p-3 rounded-lg border border-[var(--border-primary)]">
+            <p className="text-[11px] text-[var(--text-tertiary)] font-medium">Contact your administrator to obtain API credentials and endpoint documentation.</p>
           </div>
         </div>
       </div>

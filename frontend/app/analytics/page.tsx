@@ -82,15 +82,46 @@ export default function AnalyticsPage() {
     setError(null);
     setIsComplete(false);
     try {
-      await fetch('http://localhost:8000/api/agents/generate-dashboard', {
+      const res = await fetch('http://localhost:8000/api/agents/generate-analytics/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ category: formData.category || 'all' }),
-      }).catch(() => null);
-    } catch { /* ignore */ }
-    await new Promise((r) => setTimeout(r, STEPS.length * 500 + 600));
-    setResult(MOCK_RESULT);
-    setIsComplete(true);
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const mapped: AnalyticsResult = {
+          kpis: {
+            conversion_rate: data.kpis?.conversion_rate ?? MOCK_RESULT.kpis.conversion_rate,
+            avg_deal_size:   data.kpis?.avg_deal_size   ?? MOCK_RESULT.kpis.avg_deal_size,
+            win_rate:        data.kpis?.win_rate         ?? MOCK_RESULT.kpis.win_rate,
+            churn_rate:      data.kpis?.churn_rate       ?? MOCK_RESULT.kpis.churn_rate,
+            mrr:             data.kpis?.mrr              ?? MOCK_RESULT.kpis.mrr,
+            arr:             data.kpis?.arr              ?? MOCK_RESULT.kpis.arr,
+          },
+          trends: data.trends ?? MOCK_RESULT.trends,
+          insights: Array.isArray(data.insights) && data.insights.length > 0
+            ? data.insights
+            : MOCK_RESULT.insights,
+          alerts: Array.isArray(data.alerts) && data.alerts.length > 0
+            ? data.alerts
+            : MOCK_RESULT.alerts,
+          quick_insights: Array.isArray(data.quick_insights) && data.quick_insights.length > 0
+            ? data.quick_insights
+            : MOCK_RESULT.quick_insights,
+        };
+        setResult(mapped);
+        setIsComplete(true);
+        return data.execution_steps ?? null;
+      } else {
+        setError('Analytics agent returned an error — check backend logs.');
+        setIsComplete(true);
+        return null;
+      }
+    } catch {
+      setError('Could not connect to backend. Start the server with: python backend/run.py');
+      setIsComplete(true);
+      return null;
+    }
   }, []);
 
   return (

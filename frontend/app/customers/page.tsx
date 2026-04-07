@@ -56,20 +56,23 @@ export default function CustomersPage() {
   }, []);
 
   const handleRun = useCallback(async (formData: Record<string, string>) => {
-    const targetId = selectedCustomer && formData.company_name === selectedCustomer.company_name ? selectedCustomer.id : formData.customer_id;
-    const targetName = formData.company_name || (selectedCustomer ? selectedCustomer.company_name : 'Unknown Customer');
+    const targetId = selectedCustomer?.id || formData.customer_id;
+    const targetName = selectedCustomer?.company_name || formData.company_name || 'Unknown Customer';
 
     setError(null);
     setIsComplete(false);
 
-    let res = null;
-    if (targetId) {
-      res = await fetch(`http://localhost:8000/api/agents/monitor-customer/${targetId}/sync`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      }).then(r => r.ok ? r.json() : null).catch(() => null);
+    if (!targetId) {
+      setError('Please select a customer from the list above.');
+      setIsComplete(true);
+      return null;
     }
+
+    const res = await fetch(`http://localhost:8000/api/agents/monitor-customer/${targetId}/sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    }).then(r => r.ok ? r.json() : null).catch(() => null);
 
     if (res) {
       const healthScore = res.health_score ?? (selectedCustomer?.health_score || 50);
@@ -91,23 +94,14 @@ export default function CustomersPage() {
         upsell_opportunities: res.opportunities ?? res.upsell_opportunities ?? [],
         recommended_actions: res.recommended_actions ?? [],
       });
+      setIsComplete(true);
+      // Return real execution steps for WorkflowSteps replay
+      return res.execution_steps ?? null;
     } else {
-      setError('Agent call failed — using stored CRM data');
-      setResult({
-        customer_id: targetId || 'manual-customer',
-        company_name: targetName,
-        health_score: 50,
-        churn_risk: {
-          level: 'medium',
-          probability: 50,
-          factors: [],
-        },
-        engagement: { logins_per_week: 0, feature_adoption_pct: 0, last_login: '—' },
-        upsell_opportunities: [],
-        recommended_actions: [],
-      });
+      setError('Agent call failed — ensure the backend is running and try again.');
+      setIsComplete(true);
+      return null;
     }
-    setIsComplete(true);
   }, [selectedCustomer]);
 
   const customerSelector = (
@@ -119,7 +113,7 @@ export default function CustomersPage() {
             Select Customer from CRM {!customersLoading && <span className="ml-1 opacity-60 font-medium">({customers.length} found)</span>}
           </h3>
         </div>
-        {!customersLoading && <div className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest text-right pr-24" style={{ width: 140 }}>Health Score</div>}
+        {!customersLoading && <div className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest text-right" style={{ minWidth: 90 }}>Health Score</div>}
       </div>
       
       {customersLoading ? (
@@ -153,17 +147,18 @@ export default function CustomersPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5">
                     <span className="text-[13px] font-700 truncate" style={{ color: 'var(--text-primary)', fontWeight: 700 }}>
-                      {c.company_name.replace(/([a-f0-9]{4})[a-f0-9-]{28,}/gi, '$1')}
+                      {(c.company_name || 'Unknown').replace(/([a-f0-9]{4})[a-f0-9-]{28,}/gi, '$1')}
                     </span>
                     {selectedCustomer?.id === c.id && <div className="w-1.5 h-1.5 rounded-full" style={{ background: COLOR }} />}
                   </div>
                   <div className="flex items-center gap-2 overflow-hidden">
+                    <span className="text-[9px] font-mono font-bold uppercase tracking-wider px-1.5 py-0.5 rounded" style={{ background: 'var(--bg-tertiary)', color: 'var(--text-tertiary)' }}>#{c.id?.slice(0,4).toUpperCase()}</span>
                     <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: CHURN_COLOR[c.churn_risk] }}>{c.churn_risk} risk</span>
                     <span className="text-[10px] text-[var(--text-tertiary)]">·</span>
                     <span className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>${(c.mrr ?? 0).toLocaleString()}/mo</span>
                   </div>
                 </div>
-                 <div className="text-right flex-shrink-0 pr-24" style={{ width: 140 }}>
+                 <div className="text-right flex-shrink-0" style={{ minWidth: 90 }}>
                     <div className="text-[11px] font-bold" style={{ color: c.health_score >= 70 ? '#34c759' : c.health_score >= 40 ? '#ff9500' : '#ff3b30' }}>
                       {c.health_score}% Match
                     </div>

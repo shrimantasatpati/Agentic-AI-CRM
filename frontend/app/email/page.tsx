@@ -107,6 +107,8 @@ export default function EmailPage() {
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const autoAnalysisFiredRef = useRef(false); // Prevents infinite loop
+
   const loadEmails = useCallback(async (n: number = limit) => {
     setLoading(true); setError(null);
     try {
@@ -118,31 +120,41 @@ export default function EmailPage() {
           setSelectedId(data[0].id);
       }
       setLastRefresh(new Date());
-
-      // AUTO-TRIGGER: If there are unanalyzed emails, trigger batch analysis immediately
-      const hasUnanalyzed = data.some((e: any) => !e.analyzed);
-      if (hasUnanalyzed && !isAnalyzing) {
-        triggerAutoAnalysis();
-      }
-    } catch (e) { setError(String(e)); }
+      return data; // Return data so caller can check
+    } catch (e) { setError(String(e)); return []; }
     finally { setLoading(false); }
-  }, [limit, selectedId, isAnalyzing]);
+  }, [limit, selectedId]);
 
-  const triggerAutoAnalysis = async () => {
-      if (isAnalyzing) return;
-      setIsAnalyzing(true);
-      try {
-          await fetch(`http://localhost:8000/api/emails/analyze-inbox?limit=5`, { method: 'POST' });
-          // Refresh after a delay to show results
-          setTimeout(() => loadEmails(), 2000);
-      } catch (err) {
-          console.error('Auto-analysis failed:', err);
-      } finally {
-          setIsAnalyzing(false);
+  const triggerAutoAnalysis = useCallback(async () => {
+    if (isAnalyzing) return;
+    setIsAnalyzing(true);
+    try {
+        await fetch(`http://localhost:8000/api/emails/analyze-inbox?limit=10`, { method: 'POST' });
+        // Refresh once after analysis completes
+        await new Promise(r => setTimeout(r, 2000));
+        await loadEmails();
+    } catch (err) {
+        console.error('Auto-analysis failed:', err);
+    } finally {
+        setIsAnalyzing(false);
+    }
+  }, [isAnalyzing, loadEmails]);
+
+  // On initial mount: load emails then trigger analysis ONCE if there are pending emails
+  useEffect(() => {
+    const init = async () => {
+      const data = await loadEmails();
+      if (!autoAnalysisFiredRef.current && Array.isArray(data)) {
+        const hasUnanalyzed = data.some((e: any) => !e.analyzed);
+        if (hasUnanalyzed) {
+          autoAnalysisFiredRef.current = true;
+          triggerAutoAnalysis();
+        }
       }
-  };
-
-  useEffect(() => { loadEmails(); }, []);
+    };
+    init();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const analyzed   = emails.filter(e => e.analyzed);
   const unanalyzed = emails.filter(e => !e.analyzed);

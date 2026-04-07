@@ -97,9 +97,22 @@ export default function MissionControlPage() {
   const fetchData = useCallback(async () => {
     try {
       setError(null);
-      const [d, p] = await Promise.all([getDashboard(), getPipeline()]);
-      setStats(d);
-      setPipeline(p);
+      // Use direct fetch with a short timeout to avoid hanging if backend is slow
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      try {
+        const [dRes, pRes] = await Promise.all([
+          fetch('http://localhost:8000/api/analytics/dashboard', { signal: controller.signal }),
+          fetch('http://localhost:8000/api/analytics/pipeline', { signal: controller.signal }),
+        ]);
+        clearTimeout(timeout);
+        if (dRes.ok) setStats(await dRes.json());
+        if (pRes.ok) setPipeline(await pRes.json());
+      } catch (fetchErr) {
+        clearTimeout(timeout);
+        // If backend is offline show a short error rather than hanging
+        setError('Backend offline — start the server with: python backend/run.py');
+      }
     } catch (e) {
       setError((e as Error).message);
     } finally {

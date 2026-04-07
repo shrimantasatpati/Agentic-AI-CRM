@@ -92,33 +92,38 @@ export default function LeadsPage() {
     setError(null);
     setIsComplete(false);
     
-    // If no explicit lead selected via UI, but formData exists (for cases where user manually types or first load)
     const payload = selectedLead 
-      ? { email: selectedLead.email, first_name: selectedLead.first_name, last_name: selectedLead.last_name, company_name: selectedLead.company_name }
+      ? { email: selectedLead.email, first_name: selectedLead.first_name, last_name: selectedLead.last_name, company_name: selectedLead.company_name, domain: selectedLead.company_name?.toLowerCase().replace(/\s+/g, '') + '.com' }
       : formData;
 
     if (!payload.email) {
-      setError("Please select a lead or provide an email.");
-      return;
+      setError("Please select a lead from the list or provide an email address.");
+      setIsComplete(true);
+      return null;
     }
 
-    const [liveResult] = await Promise.all([
-      fetch('http://localhost:8000/api/leads/workflow', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      }).then(r => r.ok ? r.json() : null).catch(() => null),
-      new Promise((r) => setTimeout(r, STEPS.length * 500 + 800)),
-    ]);
-    // Map API response to display format; fallback to MOCK if API fails
-    const filled: LeadQualificationResult = liveResult ?? { ...MOCK_RESULT, email: formData.email || MOCK_RESULT.email };
-    // Ensure required fields exist
+    // Await the real API call — no fake setTimeout race
+    const liveResult = await fetch('http://localhost:8000/api/leads/workflow', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).then(r => r.ok ? r.json() : null).catch(() => null);
+
+    if (!liveResult) {
+      setError('Agent failed to respond. Ensure the backend is running and API key is configured.');
+      setIsComplete(true);
+      return null;
+    }
+
+    // Map API response to display format; fill structural gaps from MOCK_RESULT
+    const filled: LeadQualificationResult = { ...liveResult };
     if (!filled.enriched_data) filled.enriched_data = MOCK_RESULT.enriched_data;
     if (!filled.routing) filled.routing = MOCK_RESULT.routing;
-    if (!filled.signals) filled.signals = MOCK_RESULT.signals;
+    if (!filled.signals) filled.signals = liveResult.signals || MOCK_RESULT.signals;
     if (!filled.score_breakdown) filled.score_breakdown = MOCK_RESULT.score_breakdown;
     setResult(filled);
     setIsComplete(true);
+
     // Show auto-email toast if score >= 70
     const score = filled.score ?? 0;
     if (score >= 70) {
@@ -126,7 +131,10 @@ export default function LeadsPage() {
       setEmailToast(`✉️ Auto-email sent to ${toEmail} · Score: ${score}/100 · Priority: ${filled.routing?.priority?.toUpperCase() || 'HIGH'}`);
       setTimeout(() => setEmailToast(null), 7000);
     }
-  }, []);
+
+    // Return real execution steps for WorkflowSteps replay
+    return liveResult.execution_steps ?? null;
+  }, [selectedLead]);
 
   const scoreData = result
     ? Object.entries(result.score_breakdown).map(([k, v]) => ({
@@ -144,7 +152,7 @@ export default function LeadsPage() {
             Select Lead from CRM {!leadsLoading && <span className="ml-1 opacity-60 font-medium">({leads.length} found)</span>}
           </h3>
         </div>
-        {!leadsLoading && <div className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest text-right pr-24" style={{ width: 140 }}>Lead Fit Score</div>}
+        {!leadsLoading && <div className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest text-right" style={{ minWidth: 90 }}>Lead Fit Score</div>}
       </div>
       
       {leadsLoading ? (
@@ -188,7 +196,7 @@ export default function LeadsPage() {
                     <span className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>{l.company_name || 'Individual'}</span>
                   </div>
                 </div>
-                 <div className="text-right flex-shrink-0 pr-24" style={{ width: 140 }}>
+                 <div className="text-right flex-shrink-0" style={{ minWidth: 90 }}>
                     <div className="text-[11px] font-bold" style={{ color: l.lead_score >= 70 ? '#34c759' : l.lead_score >= 40 ? '#ff9500' : '#ff3b30' }}>
                       {l.lead_score}% Match
                     </div>

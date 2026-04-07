@@ -4,9 +4,9 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from database.connection import get_db
 from database.models import Company, Contact, Deal, Customer
+from typing import List, Dict, Any
 import uuid
 import random
-import json
 import io
 import csv
 from datetime import datetime, timedelta
@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 router = APIRouter()
 
 @router.post("/import/salesforce")
-async def import_salesforce(payload: list, db: Session = Depends(get_db)):
+async def import_salesforce(payload: List[Dict[str, Any]], db: Session = Depends(get_db)):
     """Simulate a Salesforce Sync — mapping SF objects to CRM schema.
        Excludes email population for privacy as requested.
     """
@@ -32,20 +32,21 @@ async def import_salesforce(payload: list, db: Session = Depends(get_db)):
                 enrichment_data={"source": "Salesforce", "sf_id": entry.get("Id")}
             )
             db.add(new_company)
-            
+            db.flush()  # flush to get the company_id FK before adding contact
+
             # Create Contact (Excluding Email)
             contact_id = str(uuid.uuid4())
             new_contact = Contact(
                 id=contact_id,
                 company_id=company_id,
-                email=f"sf_import_{contact_id[:8]}@masked.com", # Masked as requested
+                email=f"sf_import_{contact_id[:8]}@masked.com",  # Masked as requested
                 first_name=entry.get("FirstName", "Unknown"),
                 last_name=entry.get("LastName", "Contact"),
                 job_title=entry.get("Title", ""),
                 lead_source="Salesforce"
             )
             db.add(new_contact)
-            
+
             # Create Deal
             if entry.get("Amount"):
                 new_deal = Deal(
@@ -58,9 +59,9 @@ async def import_salesforce(payload: list, db: Session = Depends(get_db)):
                     probability=10
                 )
                 db.add(new_deal)
-            
+
             imported_count += 1
-            
+
         db.commit()
         return {"status": "success", "imported": imported_count}
     except Exception as e:
@@ -69,6 +70,7 @@ async def import_salesforce(payload: list, db: Session = Depends(get_db)):
         error_msg = str(e)
         raise HTTPException(status_code=500, detail=f"Salesforce import failed: {error_msg}")
 
+
 @router.post("/import/excel")
 async def import_excel(file: UploadFile = File(...), db: Session = Depends(get_db)):
     """Import dataset from Excel/CSV and map to CRM schema."""
@@ -76,13 +78,14 @@ async def import_excel(file: UploadFile = File(...), db: Session = Depends(get_d
         content = await file.read()
         stream = io.StringIO(content.decode('utf-8'))
         reader = csv.DictReader(stream)
-        
+
         count = 0
         for row in reader:
             # Basic mapping logic — looks for common headers
             company_name = row.get("Company") or row.get("Account") or row.get("Organization")
-            if not company_name: continue
-            
+            if not company_name:
+                continue
+
             company = Company(
                 name=company_name,
                 domain=row.get("Domain") or row.get("Website", ""),
@@ -91,7 +94,7 @@ async def import_excel(file: UploadFile = File(...), db: Session = Depends(get_d
             )
             db.add(company)
             db.flush()
-            
+
             contact = Contact(
                 company_id=company.id,
                 email=row.get("Email") or f"import_{uuid.uuid4().hex[:8]}@masked.com",
@@ -100,21 +103,23 @@ async def import_excel(file: UploadFile = File(...), db: Session = Depends(get_d
             )
             db.add(contact)
             count += 1
-            
+
         db.commit()
         return {"status": "success", "rows_processed": count}
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=f"File import failed: {e}")
 
+
 @router.get("/status")
 async def get_source_status():
     """Health status of external source connectors"""
     return {
         "salesforce": {"status": "connected", "last_sync": datetime.now().isoformat()},
-        "rest_api": {"status": "active", "endpoint": "/api/sources/import/rest"},
+        "rest_api": {"status": "active"},
         "excel": {"status": "ready"}
     }
+
 
 @router.post("/seed")
 async def seed_production_data(db: Session = Depends(get_db)):
@@ -131,9 +136,6 @@ async def seed_production_data(db: Session = Depends(get_db)):
         db.flush()
 
         # 2. Seed Companies (10)
-        # Local definition for robustness
-        
-        # Local definition for robustness
         COMPANIES_LIST = [
             {"name": "Acme Corp", "domain": "acme.com", "industry": "Technology", "loc": "San Francisco"},
             {"name": "Global Dynamics", "domain": "global-d.id", "industry": "Manufacturing", "loc": "Austin"},
@@ -161,10 +163,10 @@ async def seed_production_data(db: Session = Depends(get_db)):
         db.flush()
 
         # 3. Seed Contacts (1 per company)
-        names = [("Elon", "Musk"), ("Sheryl", "Sandberg"), ("Satya", "Nadella"), ("Sundar", "Pichai"), 
-                 ("Tim", "Cook"), ("Jensen", "Huang"), ("Lisa", "Su"), ("Marc", "Benioff"), 
+        names = [("Elon", "Musk"), ("Sheryl", "Sandberg"), ("Satya", "Nadella"), ("Sundar", "Pichai"),
+                 ("Tim", "Cook"), ("Jensen", "Huang"), ("Lisa", "Su"), ("Marc", "Benioff"),
                  ("Jack", "Dorsey"), ("Parag", "Agrawal")]
-        
+
         contacts = []
         for i, comp in enumerate(companies):
             first, last = names[i]
@@ -179,17 +181,52 @@ async def seed_production_data(db: Session = Depends(get_db)):
             )
             db.add(contact)
             contacts.append(contact)
+
+        # Add sample Gmail contacts for Email Intelligence matching
+        personal_company = Company(
+            id=str(uuid.uuid4()),
+            name="Personal / Gmail Contacts",
+            domain="gmail.com",
+            industry="Personal",
+            location="India"
+        )
+        db.add(personal_company)
+        db.flush()
+
+        for gmail_addr, fname, lname in [
+            ("satpatishrimanta2024@gmail.com", "Shrimanta", "Satpati"),
+            ("dataduo@gmail.com", "Data", "Duo"),
+        ]:
+            gmail_contact = Contact(
+                id=str(uuid.uuid4()),
+                company_id=personal_company.id,
+                first_name=fname,
+                last_name=lname,
+                email=gmail_addr,
+                job_title="Owner",
+                lead_source="Gmail Contact",
+                lead_status="qualified"
+            )
+            db.add(gmail_contact)
+            contacts.append(gmail_contact)
+
         db.flush()
 
         # 4. Seed Deals (1 per contact)
         deals = []
         stages = ["prospecting", "qualification", "proposal", "negotiation", "closed_won"]
+        deal_names = [
+            "Deal Global Run", "AI 2027 Readiness", "Enterprise Rollout",
+            "Q3 Growth Initiative", "Cloud Migration", "Market Expansion",
+            "Platform Modernization", "Strategic Partnership", "Customer Retention",
+            "Digital Transformation"
+        ]
         for i, contact in enumerate(contacts):
             deal = Deal(
                 id=str(uuid.uuid4()),
                 company_id=contact.company_id,
                 contact_id=contact.id,
-                name=f"Expansion Deal - {companies[i].name}",
+                name=f"Deal - {deal_names[i % len(deal_names)]}",
                 value=random.choice([25000, 50000, 75000, 120000, 250000]),
                 stage=random.choice(stages),
                 probability=50,
