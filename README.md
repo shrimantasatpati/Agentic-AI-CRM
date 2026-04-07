@@ -1,12 +1,8 @@
 <div align="center">
-
-<<<<<<< HEAD
+    
 <img src="frontend/public/logo.png" alt="AI CRM Logo" width="100" />
-
-# AI CRM
-=======
-# 🤖 Synaptic CRM - Complete Agentic AI CRM Solution
->>>>>>> ecf5d721604f2da8c578a60190d3bfad6cb5c0e9
+    
+# Synaptic CRM - Complete Agentic AI CRM Solution
 
 ### Production-Grade CRM Powered by Autonomous AI Agents
 
