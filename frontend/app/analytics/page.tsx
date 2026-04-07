@@ -234,6 +234,43 @@ export default function AnalyticsPage() {
               ))}
             </div>
           </div>
+
+          {/* AI Recommendations — derived from critical/high insights */}
+          {(() => {
+            const recs = result.recommendations
+              ? result.recommendations
+              : result.insights
+                  .filter(ins => ins.priority === 'critical' || ins.priority === 'high')
+                  .map(ins => ({ action: ins.text, impact: ins.priority as 'high' | 'medium' | 'low', category: ins.category }));
+            if (!recs || recs.length === 0) return null;
+            return (
+              <div className="apple-card">
+                <div className="flex items-center gap-2 mb-3">
+                  <span style={{ fontSize: 15 }}>🎯</span>
+                  <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>AI Recommendations</p>
+                </div>
+                <div className="space-y-3">
+                  {recs.map((rec, i) => (
+                    <div key={i} className="flex gap-3 p-3 rounded-xl" style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border-secondary)' }}>
+                      <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold"
+                        style={{ background: rec.impact === 'high' ? 'rgba(255,59,48,0.15)' : 'rgba(255,149,0,0.15)',
+                                 color: rec.impact === 'high' ? '#ff3b30' : '#ff9500' }}>
+                        {i + 1}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm" style={{ color: 'var(--text-secondary)', lineHeight: 1.5 }}>{rec.action}</p>
+                        <div className="flex items-center gap-2 mt-1.5">
+                          <span className={`badge badge-${rec.impact === 'high' ? 'red' : rec.impact === 'medium' ? 'orange' : 'gray'}`}
+                            style={{ fontSize: 9 }}>{rec.impact} impact</span>
+                          <span className="badge badge-gray" style={{ fontSize: 9 }}>{rec.category}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
     />

@@ -22,7 +22,6 @@ export interface Lead {
   email: string;
   first_name: string;
   last_name: string;
-  lead_score: number;
   lead_status: string;
 }
 

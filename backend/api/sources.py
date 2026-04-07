@@ -229,8 +229,7 @@ async def seed_production_data(db: Session = Depends(get_db)):
                 name=f"Deal - {deal_names[i % len(deal_names)]}",
                 value=random.choice([25000, 50000, 75000, 120000, 250000]),
                 stage=random.choice(stages),
-                probability=50,
-                health_score=random.randint(60, 95)
+                probability=50
             )
             db.add(deal)
             deals.append(deal)
@@ -244,7 +243,6 @@ async def seed_production_data(db: Session = Depends(get_db)):
                 company_id=comp.id,
                 plan=random.choice(["Enterprise", "Growth"]),
                 mrr=random.choice([5000, 10000, 15000]),
-                health_score=random.randint(70, 99),
                 churn_risk="low"
             ))
 
@@ -253,3 +251,54 @@ async def seed_production_data(db: Session = Depends(get_db)):
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Seeding failed: {str(e)}")
+
+
+@router.post("/import/rest")
+async def import_rest_api(config: Dict[str, Any], db: Session = Depends(get_db)):
+    """Import data from a custom REST API endpoint."""
+    import httpx
+    url = config.get("endpoint")
+    method = config.get("method", "GET")
+    headers = config.get("headers", {})
+    body = config.get("body")
+
+    if not url:
+        raise HTTPException(status_code=400, detail="Missing endpoint URL")
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            if method == "GET":
+                res = await client.get(url, headers=headers)
+            else:
+                import json
+                parsed_body = json.loads(body) if body else {}
+                res = await client.post(url, headers=headers, json=parsed_body)
+            
+            data = res.json()
+            # If it's a list, import it
+            imported = 0
+            if isinstance(data, list):
+                for item in data[:50]: # Cap at 50 for demo
+                    # Simple mapping for demo: look for email/name
+                    email = item.get("email") or item.get("Email")
+                    if not email: continue
+                    
+                    contact = Contact(
+                        id=str(uuid.uuid4()),
+                        email=email,
+                        first_name=item.get("first_name") or item.get("Name", "REST"),
+                        last_name=item.get("last_name") or "",
+                        lead_source="REST API"
+                    )
+                    db.add(contact)
+                    imported += 1
+                db.commit()
+            
+            return {
+                "status": "success",
+                "http_status": res.status_code,
+                "imported": imported,
+                "data": data
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"REST import failed: {str(e)}")

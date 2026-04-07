@@ -51,7 +51,6 @@ class LeadQualificationAgent(BaseAgent):
                     "first_name": existing_contact.first_name,
                     "last_name": existing_contact.last_name,
                     "job_title": existing_contact.job_title,
-                    "lead_score": existing_contact.lead_score,
                     "lead_status": existing_contact.lead_status
                 })
 
@@ -84,7 +83,6 @@ class LeadQualificationAgent(BaseAgent):
             from database.models import Contact
             contact = db.query(Contact).filter(Contact.email == email).first()
             if contact:
-                contact.lead_score = score
                 contact.lead_status = routing.get("team", "unqualified")
                 db.commit()
 

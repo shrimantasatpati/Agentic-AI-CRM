@@ -23,7 +23,6 @@ class DealResponse(BaseModel):
     name: str
     value: float
     stage: str
-    health_score: int
     is_stalled: bool
 
     class Config:

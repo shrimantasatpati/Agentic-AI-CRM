@@ -84,7 +84,6 @@ class CustomerSuccessAgent(BaseAgent):
             from database.models import Customer
             customer = db.query(Customer).filter(Customer.id == customer_id).first()
             if customer:
-                customer.health_score = health_score
                 customer.churn_risk = churn_risk.get("level", "low")
                 db.commit()
 

@@ -110,10 +110,10 @@ export default function CustomersPage() {
         <div className="flex items-center gap-2">
           <Heart size={14} color={COLOR} />
           <h3 className="font-700 text-sm" style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
-            Select Customer from CRM {!customersLoading && <span className="ml-1 opacity-60 font-medium">({customers.length} found)</span>}
+            Customers {!customersLoading && <span className="ml-1 opacity-60 font-medium">({customers.length} found)</span>}
           </h3>
         </div>
-        {!customersLoading && <div className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest text-right" style={{ minWidth: 90 }}>DB Score</div>}
+        {!customersLoading && <div className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest text-right" style={{ minWidth: 40 }}></div>}
       </div>
       
       {customersLoading ? (
@@ -158,11 +158,8 @@ export default function CustomersPage() {
                     <span className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>${(c.mrr ?? 0).toLocaleString()}/mo</span>
                   </div>
                 </div>
-                 <div className="text-right flex-shrink-0" style={{ minWidth: 90 }}>
-                    <div className="text-[11px] font-bold" style={{ color: c.health_score >= 70 ? '#34c759' : c.health_score >= 40 ? '#ff9500' : '#ff3b30' }}>
-                      {c.health_score}/100
-                    </div>
-                    <div className="text-[9px] text-[var(--text-tertiary)] font-bold uppercase tracking-tight">DB Score</div>
+                 <div className="text-right flex-shrink-0" style={{ minWidth: 40 }}>
+                    <div className="text-[1.5px] w-1.5 h-1.5 rounded-full" style={{ background: selectedCustomer?.id === c.id ? COLOR : 'transparent' }} />
                  </div>
               </div>
             </button>

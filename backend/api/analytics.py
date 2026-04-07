@@ -96,10 +96,10 @@ async def download_csv_report(db: Session = Depends(get_db)):
         writer = csv.writer(output)
 
         writer.writerow(["=== LEADS / CONTACTS ==="])
-        writer.writerow(["ID", "First Name", "Last Name", "Email", "Job Title", "Lead Score", "Lead Status", "Lead Source", "Company ID", "Created At"])
+        writer.writerow(["ID", "First Name", "Last Name", "Email", "Job Title", "Lead Status", "Lead Source", "Company ID", "Created At"])
         contacts = db.query(Contact).order_by(Contact.created_at.desc()).limit(500).all()
         for c in contacts:
-            writer.writerow([c.id or "", c.first_name or "", c.last_name or "", c.email or "", c.job_title or "", c.lead_score or 0, c.lead_status or "", c.lead_source or "", c.company_id or "", str(c.created_at)[:19] if c.created_at else ""])
+            writer.writerow([c.id or "", c.first_name or "", c.last_name or "", c.email or "", c.job_title or "", c.lead_status or "", c.lead_source or "", c.company_id or "", str(c.created_at)[:19] if c.created_at else ""])
 
         writer.writerow([])
         writer.writerow(["=== DEALS ==="])

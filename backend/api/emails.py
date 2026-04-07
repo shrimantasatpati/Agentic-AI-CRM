@@ -35,3 +35,23 @@ async def list_emails(
         query = query.filter(Email.priority == priority)
     emails = query.offset(skip).limit(limit).all()
     return emails
+
+
+@router.delete("/{email_id}")
+async def delete_email(email_id: str, db: Session = Depends(get_db)):
+    """Delete email"""
+    from fastapi import HTTPException
+    email = db.query(Email).filter(Email.id == email_id).first()
+    if not email:
+        raise HTTPException(status_code=404, detail="Email not found")
+    db.delete(email)
+    db.commit()
+    return {"status": "deleted"}
+
+
+@router.delete("/")
+async def delete_all_emails(db: Session = Depends(get_db)):
+    """Delete all emails"""
+    db.query(Email).delete()
+    db.commit()
+    return {"status": "all_deleted"}

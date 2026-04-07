@@ -82,7 +82,6 @@ class SalesPipelineAgent(BaseAgent):
             from database.models import Deal
             deal = db.query(Deal).filter(Deal.id == deal_id).first()
             if deal:
-                deal.lead_score = health_score # Use as a proxy for health
                 deal.is_stalled = is_stalled
                 # deal.close_probability = close_probability # If model has this field
                 db.commit()

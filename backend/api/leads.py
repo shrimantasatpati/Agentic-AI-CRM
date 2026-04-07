@@ -24,7 +24,6 @@ class LeadResponse(BaseModel):
     email: str
     first_name: str
     last_name: str
-    lead_score: int
     lead_status: str
 
     class Config:

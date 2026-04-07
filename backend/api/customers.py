@@ -14,7 +14,6 @@ class CustomerResponse(BaseModel):
     id: str
     plan: str
     mrr: float
-    health_score: int
     churn_risk: str
     company_name: Optional[str] = None
 
@@ -43,7 +42,6 @@ async def list_customers(
             id=c.id,
             plan=c.plan or "Unknown",
             mrr=c.mrr or 0,
-            health_score=c.health_score or 50,
             churn_risk=c.churn_risk or "low",
             company_name=c.company.name if c.company else f"Customer #{c.id[:4].upper()}",
         ))
@@ -65,7 +63,6 @@ async def get_customer(customer_id: str, db: Session = Depends(get_db)):
         id=customer.id,
         plan=customer.plan or "Unknown",
         mrr=customer.mrr or 0,
-        health_score=customer.health_score or 50,
         churn_risk=customer.churn_risk or "low",
         company_name=customer.company.name if customer.company else f"Customer #{customer.id[:4].upper()}",
     )
@@ -79,7 +76,6 @@ async def get_customer_health(customer_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Customer not found")
 
     return {
-        "health_score": customer.health_score,
         "churn_risk": customer.churn_risk,
         "churn_probability": customer.churn_probability,
         "engagement": {

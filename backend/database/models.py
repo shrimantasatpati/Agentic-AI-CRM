@@ -48,7 +48,6 @@ class Contact(Base):
     linkedin_url = Column(String(500))
 
     # Lead Qualification
-    lead_score = Column(Integer, default=0)
     lead_status = Column(String(50), default='new')
     lead_source = Column(String(100))
 
@@ -68,7 +67,7 @@ class Contact(Base):
     activities = relationship("Activity", back_populates="contact")
 
     __table_args__ = (
-        CheckConstraint('lead_score >= 0 AND lead_score <= 100', name='check_lead_score'),
+        # CheckConstraint('lead_score >= 0 AND lead_score <= 100', name='check_lead_score'),
     )
 
 
@@ -85,8 +84,6 @@ class Deal(Base):
     stage = Column(String(50), nullable=False)
     probability = Column(Integer, default=50)
 
-    # Health & Risk
-    health_score = Column(Integer, default=50)
     is_stalled = Column(Boolean, default=False)
     risk_factors = Column(JSON)
 
@@ -112,7 +109,6 @@ class Deal(Base):
 
     __table_args__ = (
         CheckConstraint('probability >= 0 AND probability <= 100', name='check_probability'),
-        CheckConstraint('health_score >= 0 AND health_score <= 100', name='check_health_score'),
     )
 
 
@@ -130,7 +126,6 @@ class Customer(Base):
     contract_end_date = Column(Date)
 
     # Health Metrics
-    health_score = Column(Integer, default=50)
     churn_risk = Column(String(50), default='low')
     churn_probability = Column(Integer, default=0)
 
@@ -163,7 +158,7 @@ class Customer(Base):
     company = relationship("Company", back_populates="customers")
 
     __table_args__ = (
-        CheckConstraint('health_score >= 0 AND health_score <= 100', name='check_customer_health_score'),
+        # CheckConstraint('health_score >= 0 AND health_score <= 100', name='check_customer_health_score'),
     )
 
 

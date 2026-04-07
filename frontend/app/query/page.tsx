@@ -22,12 +22,15 @@ function makeId() { return Math.random().toString(36).slice(2); }
 
 // ---- Render **bold** markdown in plain text ----
 function renderBold(text: string): React.ReactNode {
-  const parts = text.split(/(\*\*[^*]+\*\*)/g);
-  return parts.map((part, i) =>
-    part.startsWith('**') && part.endsWith('**')
-      ? <strong key={i} style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{part.slice(2, -2)}</strong>
-      : part
-  );
+  // Support **, ***, and **** for bold/emphasis
+  const parts = text.split(/(\*{2,4}[^*]+\*{2,4})/g);
+  return parts.map((part, i) => {
+    const match = part.match(/^(\*{2,4})(.*)(\*{2,4})$/);
+    if (match) {
+      return <strong key={i} style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{match[2]}</strong>;
+    }
+    return part;
+  });
 }
 
 // ---- UUID / ID column detector ----
@@ -68,13 +71,22 @@ function detectChartType(data: Record<string, unknown>[]): ChartType {
   if (!data || data.length === 0) return 'table';
   const labelKey = pickLabelKey(data);
   const valueKeys = pickValueKeys(data, labelKey);
-  if (valueKeys.length === 0) return 'table';
-  if (data.length === 1) return 'table';
-  // Single numeric column with ≤6 labels → pie
-  if (valueKeys.length === 1 && data.length <= 6) return 'pie';
-  // Time-based → line
+  
+  if (valueKeys.length === 0 || !labelKey) return 'table';
+  
+  // Single row usually better as table
+  if (data.length <= 1) return 'table';
+  
   const keys = Object.keys(data[0]);
-  if (keys.some((k) => /date|time|month|year|day/i.test(k))) return 'line';
+  const hasTime = keys.some((k) => /date|time|month|year|day|created/i.test(k));
+  
+  // Time-based → line
+  if (hasTime && data.length > 2) return 'line';
+  
+  // Small discrete set → pie
+  if (valueKeys.length === 1 && data.length <= 5 && !hasTime) return 'pie';
+  
+  // Default to bar for most comparative data
   return 'bar';
 }
 

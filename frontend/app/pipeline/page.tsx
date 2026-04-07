@@ -113,13 +113,12 @@ export default function PipelinePage() {
         <div className="flex items-center gap-2">
           <DollarSign size={14} color={COLOR} />
           <h3 className="font-700 text-sm" style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
-            Select Active Deal
+            Active Deal
           </h3>
         </div>
         {!dealsLoading && (
           <div className="flex items-center gap-4">
             <span className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest">{deals.length} found</span>
-            <div className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest text-right" style={{ minWidth: 90 }}>DB Score</div>
           </div>
         )}
       </div>
@@ -165,11 +164,8 @@ export default function PipelinePage() {
                     <span className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>${(d.value ?? 0).toLocaleString()}</span>
                   </div>
                 </div>
-                <div className="text-right flex-shrink-0" style={{ minWidth: 90 }}>
-                   <div className="text-[11px] font-bold" style={{ color: d.health_score >= 70 ? '#34c759' : d.health_score >= 40 ? '#ff9500' : '#ff3b30' }}>
-                     {d.health_score}/100
-                   </div>
-                   <div className="text-[9px] text-[var(--text-tertiary)] font-bold uppercase tracking-tight">DB Score</div>
+                <div className="text-right flex-shrink-0" style={{ minWidth: 40 }}>
+                   <div className="text-[1.5px] w-1.5 h-1.5 rounded-full" style={{ background: selectedDeal?.id === d.id ? COLOR : 'transparent' }} />
                 </div>
               </div>
             </button>

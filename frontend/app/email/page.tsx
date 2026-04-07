@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Mail, RefreshCw, Loader, AlertTriangle, Inbox, Check, Zap } from 'lucide-react';
+import { Mail, RefreshCw, Loader, AlertTriangle, Inbox, Check, Zap, Trash2 } from 'lucide-react';
 
 // ─── Colour constants ───────────────────────────────────────────────────────
 const COLOR = '#5e5ce6';
@@ -116,14 +116,16 @@ export default function EmailPage() {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const data = await r.json() as EmailRow[];
       setEmails(data);
-      if (data.length > 0 && !selectedId) {
-          setSelectedId(data[0].id);
-      }
+      // Preserve selection if email still exists; else auto-select first
+      setSelectedId(prev => {
+        if (prev && data.some(e => e.id === prev)) return prev;
+        return data.length > 0 ? data[0].id : null;
+      });
       setLastRefresh(new Date());
-      return data; // Return data so caller can check
+      return data;
     } catch (e) { setError(String(e)); return []; }
     finally { setLoading(false); }
-  }, [limit, selectedId]);
+  }, [limit]);
 
   const triggerAutoAnalysis = useCallback(async () => {
     if (isAnalyzing) return;
@@ -166,6 +168,32 @@ export default function EmailPage() {
     if (selectedEmail?.draft_response) {
       navigator.clipboard.writeText(selectedEmail.draft_response);
       setCopied(true); setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const deleteEmail = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this email?')) return;
+    try {
+      const res = await fetch(`http://localhost:8000/api/emails/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setEmails(prev => prev.filter(e => e.id !== id));
+        if (selectedId === id) setSelectedId(null);
+      }
+    } catch (err) {
+      console.error('Failed to delete email:', err);
+    }
+  };
+
+  const deleteAllEmails = async () => {
+    if (!confirm('Are you sure you want to delete ALL emails in the inbox? This cannot be undone.')) return;
+    try {
+      const res = await fetch(`http://localhost:8000/api/emails/`, { method: 'DELETE' });
+      if (res.ok) {
+        setEmails([]);
+        setSelectedId(null);
+      }
+    } catch (err) {
+      console.error('Failed to clear inbox:', err);
     }
   };
 
@@ -269,8 +297,17 @@ export default function EmailPage() {
         
         {/* LEFT PANE: Email List */}
         <div className="w-5/12 flex flex-col apple-card min-h-0">
-            <div className="px-4 py-3 border-b border-[var(--border-primary)] flex-shrink-0 bg-[var(--bg-secondary)] rounded-t-xl z-10 sticky top-0">
+            <div className="px-4 py-3 border-b border-[var(--border-primary)] flex-shrink-0 bg-[var(--bg-secondary)] rounded-t-xl z-10 sticky top-0 flex justify-between items-center">
                 <p className="text-xs font-bold uppercase tracking-wider text-[var(--text-tertiary)]">Inbox ({filtered.length})</p>
+                {filtered.length > 0 && (
+                  <button 
+                    onClick={deleteAllEmails}
+                    className="p-1.5 rounded-lg text-red-500 hover:bg-red-500/10 transition-colors"
+                    title="Clear Inbox"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
             </div>
             
             <div className="overflow-y-auto flex-1 p-2 space-y-1">
@@ -344,7 +381,7 @@ export default function EmailPage() {
                         </p>
                         
                         {/* Metrics Row */}
-                        {selectedEmail.analyzed ? (
+                        {selectedEmail.analyzed && (
                             <div className="flex gap-3 flex-wrap mb-6 p-4 rounded-xl bg-[var(--bg-tertiary)]">
                                 {[
                                     { label: 'Priority', value: selectedEmail.priority, color: PRIORITY_COLORS[selectedEmail.priority] },
@@ -359,21 +396,13 @@ export default function EmailPage() {
                                     </div>
                                 ))}
                             </div>
-                        ) : (
-                            <div className="mb-6">
-                                <div className="p-5 rounded-xl border border-orange-500/20 bg-orange-500/5 text-center">
-                                    <div className="flex flex-col items-center gap-3">
-                                        <div className="w-12 h-12 rounded-full bg-orange-500/10 flex items-center justify-center">
-                                            <Loader size={24} color="#ff9500" className="animate-spin" />
-                                        </div>
-                                        <div>
-                                            <p className="text-sm font-bold text-[var(--text-primary)]">AI Analysis in Progress...</p>
-                                            <p className="text-xs text-[var(--text-secondary)] mt-1">
-                                                Our agent is currently analyzing this message and matching it with CRM data.
-                                            </p>
-                                        </div>
-                                    </div>
-                                </div>
+                        )}
+                        
+                        {/* Metrics Row */}
+                        {!selectedEmail.analyzed && (
+                            <div className="mb-4 flex items-center gap-2 p-2 rounded-lg bg-orange-500/5 border border-orange-500/20">
+                                <Loader size={12} color="#ff9500" className="animate-spin" />
+                                <span className="text-[10px] font-bold text-orange-500 uppercase tracking-tight">AI Agent is analyzing this message...</span>
                             </div>
                         )}
 
@@ -389,18 +418,25 @@ export default function EmailPage() {
                         </div>
 
                         {/* AI Draft */}
-                        {selectedEmail.analyzed && selectedEmail.draft_response && (
+                        {selectedEmail.draft_response ? (
                             <div className="mb-6 rounded-xl overflow-hidden" style={{ border: `1px solid ${COLOR}30` }}>
                                 <div className="flex justify-between items-center p-3" style={{ background: `${COLOR}10` }}>
                                     <p className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider flex items-center gap-2">
                                         <span style={{ color: COLOR }}>✦</span> AI Draft Response
                                     </p>
-                                    <button onClick={copyDraft}
-                                        className="flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
-                                        style={{ background: 'var(--bg-primary)', color: COLOR, border: `1px solid ${COLOR}30` }}>
-                                        {copied ? <Check size={12} /> : null}
-                                        {copied ? 'Copied to clipboard' : 'Copy Draft'}
-                                    </button>
+                                    <div className="flex gap-2">
+                                        <button onClick={copyDraft}
+                                            className="flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
+                                            style={{ background: 'var(--bg-primary)', color: COLOR, border: `1px solid ${COLOR}30` }}>
+                                            {copied ? <Check size={12} /> : null}
+                                            {copied ? 'Copied to clipboard' : 'Copy Draft'}
+                                        </button>
+                                        <button onClick={() => deleteEmail(selectedEmail.id)}
+                                            className="flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors border border-red-500/30 text-red-500 hover:bg-red-500/10">
+                                            <Trash2 size={12} />
+                                            Delete
+                                        </button>
+                                    </div>
                                 </div>
                                 <div className="p-4 bg-[var(--bg-primary)]">
                                     <pre className="text-sm text-[var(--text-secondary)] whitespace-pre-wrap" style={{ fontFamily: 'inherit', lineHeight: 1.6 }}>
@@ -408,6 +444,14 @@ export default function EmailPage() {
                                     </pre>
                                 </div>
                             </div>
+                        ) : (
+                          <div className="mb-6 flex justify-end">
+                             <button onClick={() => deleteEmail(selectedEmail.id)}
+                                className="flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors border border-red-500/30 text-red-500 hover:bg-red-500/10">
+                                <Trash2 size={12} />
+                                Delete Email
+                            </button>
+                          </div>
                         )}
 
                         {/* Follow-ups */}
