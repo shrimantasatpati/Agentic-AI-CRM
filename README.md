@@ -12,8 +12,6 @@
 [![SQLite](https://img.shields.io/badge/SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](https://www.sqlite.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](LICENSE)
 
-**Every agent makes real LLM calls. No hardcoded outputs. No mock data.**
-
 [Live Demo](#demo-walkthrough) · [Quick Start](#quick-start) · [Architecture](#architecture) · [API Reference](#api-reference)
 
 </div>
