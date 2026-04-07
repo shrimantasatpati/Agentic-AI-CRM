@@ -25,6 +25,7 @@ export default function SourceSystemsPage() {
   const [apiBody, setApiBody]         = useState('{\n  "limit": 100\n}');
   const [apiResult, setApiResult]     = useState<string | null>(null);
   const [apiLoading, setApiLoading]   = useState(false);
+  const [snapshotOpen, setSnapshotOpen] = useState(true);
 
   // ── Fetch DB snapshot after import ────────────────────────────────────────
   const fetchSnapshot = async () => {
@@ -150,45 +151,53 @@ export default function SourceSystemsPage() {
         </div>
       )}
 
-      {/* DB Snapshot — shown after any successful import */}
+      {/* DB Snapshot — collapsible, shown after any successful import */}
       {dbSnapshot && (
         <div className="apple-card animate-fade-in-up" style={{ border: '1px solid rgba(52,199,89,0.3)' }}>
-          <div className="flex items-center gap-2 mb-3">
+          <button
+            className="flex items-center gap-2 w-full text-left"
+            onClick={() => setSnapshotOpen(o => !o)}
+          >
             <Database size={14} color="#34c759" />
-            <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: '#34c759', letterSpacing: '0.06em' }}>
+            <p className="text-xs font-semibold uppercase tracking-wide flex-1" style={{ color: '#34c759', letterSpacing: '0.06em' }}>
               Live Database Snapshot
             </p>
-            <span className="badge badge-green ml-auto" style={{ fontSize: 9 }}>Updated just now</span>
-          </div>
-          <div className="grid grid-cols-3 gap-3 mb-4">
-            {[
-              { label: 'Contacts', value: dbSnapshot.total_contacts },
-              { label: 'With Company', value: dbSnapshot.total_companies },
-              { label: 'Imported', value: dbSnapshot.sample.length },
-            ].map(({ label, value }) => (
-              <div key={label} className="p-3 rounded-xl text-center" style={{ background: 'rgba(52,199,89,0.06)', border: '1px solid rgba(52,199,89,0.15)' }}>
-                <p className="text-xl font-bold" style={{ color: '#34c759' }}>{value}</p>
-                <p className="text-[10px] text-[var(--text-tertiary)] font-semibold uppercase tracking-wider mt-0.5">{label}</p>
-              </div>
-            ))}
-          </div>
-          {dbSnapshot.sample.length > 0 && (
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-tertiary)] mb-2">Sample Records</p>
-              <div className="space-y-1.5">
-                {dbSnapshot.sample.map((s, i) => (
-                  <div key={i} className="flex items-center gap-3 px-3 py-2 rounded-lg" style={{ background: 'var(--bg-input)' }}>
-                    <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-                      style={{ background: 'rgba(52,199,89,0.15)', color: '#34c759' }}>{s.name[0]?.toUpperCase()}</div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{s.name}</p>
-                      <p className="text-[10px] truncate" style={{ color: 'var(--text-tertiary)' }}>{s.email}</p>
-                    </div>
-                    <span className="badge badge-gray" style={{ fontSize: 9 }}>{s.company}</span>
+            <span className="badge badge-green" style={{ fontSize: 9 }}>Updated just now</span>
+            <span className="text-[10px] text-[var(--text-tertiary)] ml-2">{snapshotOpen ? '▲' : '▼'}</span>
+          </button>
+          {snapshotOpen && (
+            <>
+              <div className="grid grid-cols-3 gap-3 mb-4 mt-3">
+                {[
+                  { label: 'Contacts', value: dbSnapshot.total_contacts },
+                  { label: 'With Company', value: dbSnapshot.total_companies },
+                  { label: 'Imported', value: dbSnapshot.sample.length },
+                ].map(({ label, value }) => (
+                  <div key={label} className="p-3 rounded-xl text-center" style={{ background: 'rgba(52,199,89,0.06)', border: '1px solid rgba(52,199,89,0.15)' }}>
+                    <p className="text-xl font-bold" style={{ color: '#34c759' }}>{value}</p>
+                    <p className="text-[10px] text-[var(--text-tertiary)] font-semibold uppercase tracking-wider mt-0.5">{label}</p>
                   </div>
                 ))}
               </div>
-            </div>
+              {dbSnapshot.sample.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-tertiary)] mb-2">Sample Records</p>
+                  <div className="space-y-1.5">
+                    {dbSnapshot.sample.map((s, i) => (
+                      <div key={i} className="flex items-center gap-3 px-3 py-2 rounded-lg" style={{ background: 'var(--bg-input)' }}>
+                        <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
+                          style={{ background: 'rgba(52,199,89,0.15)', color: '#34c759' }}>{s.name[0]?.toUpperCase()}</div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{s.name}</p>
+                          <p className="text-[10px] truncate" style={{ color: 'var(--text-tertiary)' }}>{s.email}</p>
+                        </div>
+                        <span className="badge badge-gray" style={{ fontSize: 9 }}>{s.company}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
@@ -317,9 +326,9 @@ export default function SourceSystemsPage() {
       <div className="apple-card border-none bg-gradient-to-br from-[var(--blue-primary-10)] to-transparent">
         <div className="flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="flex-1">
-            <h3 className="text-lg font-bold mb-1">Populate with Synthetic Production Data</h3>
+            <h3 className="text-lg font-bold mb-1">Generate Full Dataset</h3>
             <p className="text-sm text-[var(--text-secondary)]">
-              Automatically generate a full set of realistic Companies, Deals, and Customers to test your agent workflows.
+              Wipes the existing database and repopulates it with fresh production data from <code className="text-xs bg-[var(--bg-tertiary)] px-1 py-0.5 rounded">seed_data.py</code>.
             </p>
           </div>
           <div className="flex gap-3">

@@ -620,18 +620,7 @@ export default function QueryPage() {
         <div style={{ width: 300, flexShrink: 0 }}>
           <AgentStepsPanel steps={QUERY_STEPS} stepStates={stepStates} sql={currentSql} />
 
-          {/* Placeholder when no results yet */}
-          {messages.filter((m) => m.role === 'assistant').length === 0 && (
-            <div
-              className="apple-card flex flex-col items-center justify-center mt-4"
-              style={{ minHeight: 120, opacity: 0.5 }}
-            >
-              <BarChart2 size={28} color="var(--text-tertiary)" />
-              <p className="text-xs mt-2" style={{ color: 'var(--text-tertiary)', textAlign: 'center' }}>
-                Charts appear inline with agent responses
-              </p>
-            </div>
-          )}
+
         </div>
 
       </div>

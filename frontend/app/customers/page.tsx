@@ -106,14 +106,13 @@ export default function CustomersPage() {
 
   const customerSelector = (
     <div className="apple-card mb-4 overflow-hidden" style={{ padding: 0 }}>
-      <div className="px-4 py-3 border-b flex items-center justify-between bg-[var(--bg-secondary)]" style={{ borderColor: 'var(--border-primary)' }}>
+      <div className="px-4 py-3 border-b flex items-center bg-[var(--bg-secondary)]" style={{ borderColor: 'var(--border-primary)' }}>
         <div className="flex items-center gap-2">
           <Heart size={14} color={COLOR} />
           <h3 className="font-700 text-sm" style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
             Select Customer from CRM {!customersLoading && <span className="ml-1 opacity-60 font-medium">({customers.length} found)</span>}
           </h3>
         </div>
-        {!customersLoading && <div className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest text-right" style={{ minWidth: 90 }}>Portfolio View</div>}
       </div>
       
       {customersLoading ? (
@@ -158,11 +157,6 @@ export default function CustomersPage() {
                     <span className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>${(c.mrr ?? 0).toLocaleString()}/mo</span>
                   </div>
                 </div>
-                 <div className="text-right flex-shrink-0" style={{ minWidth: 90 }}>
-                    <div className="px-2 py-1 rounded bg-[var(--bg-tertiary)] text-[10px] font-bold uppercase" style={{ color: 'var(--text-tertiary)' }}>
-                      Verified
-                    </div>
-                 </div>
               </div>
             </button>
           ))}

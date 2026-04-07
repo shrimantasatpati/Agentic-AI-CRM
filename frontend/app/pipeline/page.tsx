@@ -118,7 +118,7 @@ export default function PipelinePage() {
         </div>
         {!dealsLoading && (
           <div className="flex items-center gap-4">
-            <span className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest">{deals.length} active deals</span>
+            <span className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest">Active Deals ({deals.length} found)</span>
           </div>
         )}
       </div>
@@ -146,7 +146,7 @@ export default function PipelinePage() {
                 borderColor: 'var(--border-secondary)',
                 background: selectedDeal?.id === d.id ? `${COLOR}08` : 'transparent',
               }}>
-              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3">
                 <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0`} 
                      style={{ background: `${STAGE_COLOR[d.stage]}15`, border: `1px solid ${STAGE_COLOR[d.stage]}30` }}>
                   <DollarSign size={14} style={{ color: STAGE_COLOR[d.stage] }} />
@@ -163,11 +163,6 @@ export default function PipelinePage() {
                     <span className="text-[10px] text-[var(--text-tertiary)]">·</span>
                     <span className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>${(d.value ?? 0).toLocaleString()}</span>
                   </div>
-                </div>
-                <div className="text-right flex-shrink-0" style={{ minWidth: 90 }}>
-                   <div className="px-2 py-1 rounded bg-[var(--bg-tertiary)] text-[10px] font-bold uppercase" style={{ color: 'var(--text-tertiary)' }}>
-                     Live Data
-                   </div>
                 </div>
               </div>
             </button>
