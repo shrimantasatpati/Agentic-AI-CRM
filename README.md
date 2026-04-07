@@ -1,6 +1,8 @@
 <div align="center">
 
-# 🤖 AI CRM
+<img src="frontend/public/logo.png" alt="AI CRM Logo" width="100" />
+
+# AI CRM
 
 ### Production-Grade CRM Powered by Autonomous AI Agents
 
