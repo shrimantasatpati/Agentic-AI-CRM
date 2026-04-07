@@ -108,24 +108,38 @@ export default function AnalyticsPage() {
           quick_insights: Array.isArray(data.quick_insights) && data.quick_insights.length > 0
             ? data.quick_insights
             : MOCK_RESULT.quick_insights,
+          recommendations: Array.isArray(data.recommendations) && data.recommendations.length > 0
+            ? data.recommendations
+            : null,
         };
         setResult(mapped);
         setIsComplete(true);
-        return data.execution_steps ?? null;
+        // Normalize execution steps — ensure they have durationMs so WorkflowSteps can animate
+        const rawSteps = data.execution_steps;
+        if (Array.isArray(rawSteps) && rawSteps.length > 0) {
+          return rawSteps.map((s: any, i: number) => ({
+            name: typeof s === 'string' ? STEPS[i]?.name || s : (s.name || STEPS[i]?.name || `Step ${i+1}`),
+            output: typeof s === 'string' ? s : (s.output || s.description || STEPS[i]?.output || ''),
+            durationMs: typeof s === 'object' && s.durationMs ? s.durationMs : 170,
+          }));
+        }
+        // Build generic steps with even timing if the backend returns nothing
+        return STEPS.map((s) => ({ name: s.name, output: s.output, durationMs: 170 }));
       } else {
         setError('Analytics agent returned an error — check backend logs.');
         setIsComplete(true);
-        return null;
+        return STEPS.map((s) => ({ name: s.name, output: s.output, durationMs: 170 }));
       }
     } catch {
       setError('Could not connect to backend. Start the server with: python backend/run.py');
       setIsComplete(true);
-      return null;
+      return STEPS.map((s) => ({ name: s.name, output: s.output, durationMs: 170 }));
     }
   }, []);
 
   return (
     <AgentPageLayout
+      agentId="AnalyticsAgent"
       agentName="Analytics Intelligence"
       agentDescription="Generates real-time KPIs, trend analysis, actionable insights, and alerts from your CRM data."
       agentColor={COLOR}

@@ -201,6 +201,11 @@ export interface AnalyticsResult {
     action?: string;
   }>;
   quick_insights: string[];
+  recommendations?: Array<{
+    action: string;
+    impact: 'high' | 'medium' | 'low';
+    category: string;
+  }> | null;
 }
 
 // ---- Query Database ----

@@ -20,6 +20,16 @@ const QUERY_STEPS = [
 
 function makeId() { return Math.random().toString(36).slice(2); }
 
+// ---- Render **bold** markdown in plain text ----
+function renderBold(text: string): React.ReactNode {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((part, i) =>
+    part.startsWith('**') && part.endsWith('**')
+      ? <strong key={i} style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{part.slice(2, -2)}</strong>
+      : part
+  );
+}
+
 // ---- UUID / ID column detector ----
 function isIdOrUUIDColumn(key: string, sampleValue: unknown): boolean {
   const k = key.toLowerCase();
@@ -523,7 +533,7 @@ export default function QueryPage() {
                         style={{ padding: '12px 16px', width: '100%' }}
                       >
                         <p className="text-sm" style={{ color: 'var(--text-primary)', lineHeight: 1.6, wordBreak: 'break-word' }}>
-                          {msg.content}
+                          {renderBold(msg.content)}
                         </p>
                         {msg.sql && (
                           <div className="mt-2">

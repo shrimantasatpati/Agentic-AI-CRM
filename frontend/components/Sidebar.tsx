@@ -153,7 +153,7 @@ export default function Sidebar() {
                 <div className="h-[1px] flex-1 bg-gradient-to-r from-[var(--border-primary)] to-transparent ml-2" />
               </div>
               {navItems.filter(item => {
-                const isAgent = ['Lead Qualification', 'Email Intelligence', 'Sales Pipeline', 'Customer Success', 'Meeting Scheduler', 'Query Database'].includes(item.label);
+                const isAgent = ['Lead Qualification', 'Email Intelligence', 'Sales Pipeline', 'Customer Success', 'Meeting Scheduler', 'Analytics', 'Query Database'].includes(item.label);
                 return category === 'Agents' ? isAgent : !isAgent;
               }).map((item) => {
                 const isActive = pathname === item.href;

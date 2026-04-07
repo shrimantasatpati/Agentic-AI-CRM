@@ -67,22 +67,20 @@ const MOCK_RESULT: LeadQualificationResult = {
 };
 
 export default function LeadsPage() {
-  const [result, setResult]     = useState<LeadQualificationResult | null>(null);
+  const [result, setResult]         = useState<LeadQualificationResult | null>(null);
   const [isComplete, setIsComplete] = useState(false);
-  const [error, setError]       = useState<string | null>(null);
+  const [error, setError]           = useState<string | null>(null);
   const [emailToast, setEmailToast] = useState<string | null>(null);
 
   // Leads list from CRM
-  const [leads, setLeads] = useState<any[]>([]);
+  const [leads, setLeads]           = useState<any[]>([]);
   const [leadsLoading, setLeadsLoading] = useState(true);
   const [selectedLead, setSelectedLead] = useState<any | null>(null);
 
   useEffect(() => {
     fetch('http://localhost:8000/api/leads/')
       .then(r => r.ok ? r.json() : [])
-      .then(data => {
-        setLeads(data);
-      })
+      .then(data => setLeads(data))
       .catch(() => {})
       .finally(() => setLeadsLoading(false));
   }, []);
@@ -90,18 +88,17 @@ export default function LeadsPage() {
   const handleRun = useCallback(async (formData: Record<string, string>) => {
     setError(null);
     setIsComplete(false);
-    
-    const payload = selectedLead 
+
+    const payload = selectedLead
       ? { email: selectedLead.email, first_name: selectedLead.first_name, last_name: selectedLead.last_name, company_name: selectedLead.company_name, domain: selectedLead.company_name?.toLowerCase().replace(/\s+/g, '') + '.com' }
       : formData;
 
     if (!payload.email) {
-      setError("Please select a lead from the list or provide an email address.");
+      setError('Please select a lead from the list or provide an email address.');
       setIsComplete(true);
       return null;
     }
 
-    // Await the real API call — no fake setTimeout race
     const liveResult = await fetch('http://localhost:8000/api/leads/workflow', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -114,16 +111,14 @@ export default function LeadsPage() {
       return null;
     }
 
-    // Map API response to display format; fill structural gaps from MOCK_RESULT
     const filled: LeadQualificationResult = { ...liveResult };
-    if (!filled.enriched_data) filled.enriched_data = MOCK_RESULT.enriched_data;
-    if (!filled.routing) filled.routing = MOCK_RESULT.routing;
-    if (!filled.signals) filled.signals = liveResult.signals || MOCK_RESULT.signals;
+    if (!filled.enriched_data)   filled.enriched_data   = MOCK_RESULT.enriched_data;
+    if (!filled.routing)         filled.routing         = MOCK_RESULT.routing;
+    if (!filled.signals)         filled.signals         = liveResult.signals || MOCK_RESULT.signals;
     if (!filled.score_breakdown) filled.score_breakdown = MOCK_RESULT.score_breakdown;
     setResult(filled);
     setIsComplete(true);
 
-    // Show auto-email toast if score >= 70
     const score = filled.score ?? 0;
     if (score >= 70) {
       const toEmail = filled.email || formData.email || 'the lead';
@@ -131,32 +126,37 @@ export default function LeadsPage() {
       setTimeout(() => setEmailToast(null), 7000);
     }
 
-    // Return real execution steps for WorkflowSteps replay
     return liveResult.execution_steps ?? null;
   }, [selectedLead]);
 
-
-
+  // ─── Lead Selector Panel ────────────────────────────────────────────────────
   const leadSelector = (
     <div className="apple-card mb-4 overflow-hidden" style={{ padding: 0 }}>
-      <div className="px-4 py-3 border-b flex items-center justify-between bg-[var(--bg-secondary)]" style={{ borderColor: 'var(--border-primary)' }}>
-        <div className="flex items-center gap-2">
-          <Users size={14} color={COLOR} />
-          <h3 className="font-700 text-sm" style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
-            Select Lead from CRM {!leadsLoading && <span className="ml-1 opacity-60 font-medium">({leads.length} found)</span>}
-          </h3>
-        </div>
-        {!leadsLoading && <div className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest text-right" style={{ minWidth: 90 }}>Stored Score</div>}
+      <div
+        className="px-4 py-3 border-b flex items-center gap-2 bg-[var(--bg-secondary)]"
+        style={{ borderColor: 'var(--border-primary)' }}
+      >
+        <Users size={14} color={COLOR} />
+        <h3 className="font-700 text-sm" style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
+          Incoming Leads{' '}
+          {!leadsLoading && (
+            <span className="ml-1 opacity-60 font-medium">({leads.length} found)</span>
+          )}
+        </h3>
       </div>
-      
+
       {leadsLoading ? (
         <div className="flex items-center gap-2 p-6 justify-center">
           <Loader size={18} color={COLOR} className="animate-spin" />
-          <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>Scanning CRM…</span>
+          <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
+            Scanning CRM…
+          </span>
         </div>
       ) : leads.length === 0 ? (
         <div className="p-8 text-center bg-[var(--bg-tertiary)]">
-          <p className="text-xs font-medium mb-3" style={{ color: 'var(--text-tertiary)' }}>No production leads found.</p>
+          <p className="text-xs font-medium mb-3" style={{ color: 'var(--text-tertiary)' }}>
+            No production leads found.
+          </p>
           <Link href="/sources">
             <button className="btn-primary text-[10px] py-1 px-3">Go to Source Systems</button>
           </Link>
@@ -171,31 +171,40 @@ export default function LeadsPage() {
               style={{
                 borderColor: 'var(--border-secondary)',
                 background: selectedLead?.id === l.id ? `${COLOR}08` : 'transparent',
-              }}>
+              }}
+            >
               <div className="flex items-center gap-3">
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0`} 
-                     style={{ background: `${COLOR}15`, border: `1px solid ${COLOR}30` }}>
+                <div
+                  className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                  style={{ background: `${COLOR}15`, border: `1px solid ${COLOR}30` }}
+                >
                   <Target size={14} style={{ color: COLOR }} />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5">
-                    <span className="text-[13px] font-700 truncate" style={{ color: 'var(--text-primary)', fontWeight: 700 }}>
+                    <span
+                      className="text-[13px] truncate"
+                      style={{ color: 'var(--text-primary)', fontWeight: 700 }}
+                    >
                       {l.first_name} {l.last_name}
                     </span>
-                    {selectedLead?.id === l.id && <div className="w-1.5 h-1.5 rounded-full" style={{ background: COLOR }} />}
+                    {selectedLead?.id === l.id && (
+                      <div className="w-1.5 h-1.5 rounded-full" style={{ background: COLOR }} />
+                    )}
                   </div>
                   <div className="flex items-center gap-2 overflow-hidden">
-                    <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>{l.email}</span>
+                    <span
+                      className="text-[10px] font-bold uppercase tracking-wider"
+                      style={{ color: 'var(--text-tertiary)' }}
+                    >
+                      {l.email}
+                    </span>
                     <span className="text-[10px] text-[var(--text-tertiary)]">·</span>
-                    <span className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>{l.company_name || 'Individual'}</span>
+                    <span className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>
+                      {l.company_name || 'Individual'}
+                    </span>
                   </div>
                 </div>
-                 <div className="text-right flex-shrink-0" style={{ minWidth: 90 }}>
-                    <div className="text-[11px] font-bold" style={{ color: l.lead_score >= 70 ? '#34c759' : l.lead_score >= 40 ? '#ff9500' : '#ff3b30' }}>
-                      {l.lead_score}/100
-                    </div>
-                    <div className="text-[9px] text-[var(--text-tertiary)] font-bold uppercase tracking-tight">DB Score</div>
-                 </div>
               </div>
             </button>
           ))}
@@ -224,119 +233,124 @@ export default function LeadsPage() {
           </div>
         </div>
       )}
-    <div className="max-w-[1400px]">
-      <AgentPageLayout
-        agentId="LeadQualificationAgent"
-        agentName="Smart Lead Qualification"
-        agentDescription="Scores, enriches, and routes incoming leads using AI-powered analysis and buying signal detection."
-        agentColor={COLOR}
-        agentEmoji="🎯"
-        formFields={[
-          { key: 'email', label: 'Email Address', placeholder: 'lead@company.com' },
-          { key: 'first_name', label: 'First Name', placeholder: 'John' },
-          { key: 'last_name', label: 'Last Name', placeholder: 'Doe' },
-          { key: 'company_name', label: 'Company (optional)', placeholder: 'Acme Corp' },
-        ]}
-        defaultValues={{ email: '', first_name: '', last_name: '', company_name: '' }}
-        examples={EXAMPLES}
-        steps={STEPS}
-        onRun={handleRun}
-        error={error}
-        isComplete={isComplete}
-        isReady={!!selectedLead}
-        externalFillValues={selectedLead ? {
-          email: selectedLead.email,
-          first_name: selectedLead.first_name,
-          last_name: selectedLead.last_name,
-          company_name: selectedLead.company_name || '',
-        } : null}
-        headerExtra={leadSelector}
-        resultNode={result && (
-          <div className="space-y-4">
-            {/* Score row */}
-            <div className="apple-card flex items-center gap-6">
-              <div className="flex-col items-center text-center" style={{ minWidth: 120 }}>
-                <ScoreGauge score={result.score} size={110} label="AI Score" />
-                <p className="text-[10px] mt-1 font-semibold" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Live LLM Score</p>
+
+      <div className="max-w-[1400px]">
+        <AgentPageLayout
+          agentId="LeadQualificationAgent"
+          agentName="Smart Lead Qualification"
+          agentDescription="Scores, enriches, and routes incoming leads using AI-powered analysis and buying signal detection."
+          agentColor={COLOR}
+          agentEmoji="🎯"
+          formFields={[
+            { key: 'email',        label: 'Email Address',      placeholder: 'lead@company.com' },
+            { key: 'first_name',   label: 'First Name',         placeholder: 'John' },
+            { key: 'last_name',    label: 'Last Name',          placeholder: 'Doe' },
+            { key: 'company_name', label: 'Company (optional)', placeholder: 'Acme Corp' },
+          ]}
+          defaultValues={{ email: '', first_name: '', last_name: '', company_name: '' }}
+          examples={EXAMPLES}
+          steps={STEPS}
+          onRun={handleRun}
+          error={error}
+          isComplete={isComplete}
+          isReady={!!selectedLead}
+          externalFillValues={selectedLead ? {
+            email:        selectedLead.email,
+            first_name:   selectedLead.first_name,
+            last_name:    selectedLead.last_name,
+            company_name: selectedLead.company_name || '',
+          } : null}
+          headerExtra={leadSelector}
+          resultNode={result && (
+            <div className="space-y-4">
+              {/* Score row */}
+              <div className="apple-card flex items-center gap-6">
+                <div className="flex-col items-center text-center" style={{ minWidth: 120 }}>
+                  <ScoreGauge score={result.score} size={110} label="AI Score" />
+                  <p className="text-[10px] mt-1 font-semibold" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                    Live LLM Score
+                  </p>
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>
+                    AI Enrichment Signals
+                  </p>
+                  <div className="space-y-2">
+                    {[
+                      { label: 'Company Size', value: result.enriched_data?.company_size || '—', icon: '🏢' },
+                      { label: 'Industry',     value: result.enriched_data?.industry     || '—', icon: '🏭' },
+                      { label: 'Seniority',    value: result.enriched_data?.seniority    || '—', icon: '👤' },
+                      { label: 'Budget Signal',value: result.enriched_data?.budget_likelihood || '—', icon: '💰' },
+                      { label: 'Domain',       value: result.enriched_data?.domain       || '—', icon: '🌐' },
+                    ].map(({ label, value, icon }) => (
+                      <div key={label} className="flex items-center gap-2">
+                        <span style={{ fontSize: 13 }}>{icon}</span>
+                        <span className="text-xs" style={{ color: 'var(--text-tertiary)', minWidth: 90 }}>{label}</span>
+                        <span className="badge badge-blue" style={{ fontSize: 11 }}>{String(value)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {result.enriched_data?.web_research_used && (
+                    <div className="mt-3 flex items-center gap-2 text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
+                      <span>🔍</span><span>Web research used in scoring (DuckDuckGo)</span>
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="flex-1">
-                <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>AI Enrichment Signals</p>
+
+              {/* Enriched data + routing */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="apple-card">
+                  <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Enriched Data</p>
+                  <div className="space-y-2">
+                    {Object.entries(result.enriched_data).map(([k, v]) => (
+                      <div key={k} className="flex gap-2">
+                        <span className="text-xs" style={{ color: 'var(--text-tertiary)', minWidth: 80, textTransform: 'capitalize' }}>{k.replace('_', ' ')}</span>
+                        <span className="badge badge-blue">{String(v)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="apple-card">
+                  <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Routing Decision</p>
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className={`badge badge-${result.routing.priority === 'high' ? 'red' : 'orange'}`} style={{ fontSize: 13, padding: '4px 12px' }}>
+                      {result.routing.priority.toUpperCase()}
+                    </div>
+                    <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{result.routing.team}</span>
+                  </div>
+                  <div className="p-3 rounded-lg bg-[var(--bg-tertiary)] border border-[var(--border-secondary)]">
+                    <p className="text-xs font-bold uppercase mb-1" style={{ color: 'var(--text-tertiary)' }}>Next Action</p>
+                    <p className="text-xs" style={{ color: 'var(--text-secondary)', lineHeight: 1.4 }}>{result.routing.recommended_action}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Buying Signals */}
+              <div className="apple-card">
+                <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Buying Signals Detected</p>
                 <div className="space-y-2">
-                  {[
-                    { label: 'Company Size', value: result.enriched_data?.company_size || '—', icon: '🏢' },
-                    { label: 'Industry', value: result.enriched_data?.industry || '—', icon: '🏭' },
-                    { label: 'Seniority', value: result.enriched_data?.seniority || '—', icon: '👤' },
-                    { label: 'Budget Signal', value: result.enriched_data?.budget_likelihood || '—', icon: '💰' },
-                    { label: 'Domain', value: result.enriched_data?.domain || '—', icon: '🌐' },
-                  ].map(({ label, value, icon }) => (
-                    <div key={label} className="flex items-center gap-2">
-                      <span style={{ fontSize: 13 }}>{icon}</span>
-                      <span className="text-xs" style={{ color: 'var(--text-tertiary)', minWidth: 90 }}>{label}</span>
-                      <span className="badge badge-blue" style={{ fontSize: 11 }}>{String(value)}</span>
+                  {result.signals.map((s, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <div className="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: '#34c75920' }}>
+                        <Check size={10} color="#34c759" />
+                      </div>
+                      <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{s}</span>
                     </div>
                   ))}
                 </div>
-                {result.enriched_data?.web_research_used && (
-                  <div className="mt-3 flex items-center gap-2 text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
-                    <span>🔍</span><span>Web research used in scoring (DuckDuckGo)</span>
-                  </div>
-                )}
+                <div className="divider" />
+                <Link href={`/email?prefill=${encodeURIComponent(result.email)}`}>
+                  <button className="btn-secondary w-full">
+                    <ArrowRight size={14} />
+                    Notify Email Agent
+                  </button>
+                </Link>
               </div>
             </div>
-
-            {/* Enriched data + routing */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="apple-card">
-                <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Enriched Data</p>
-                <div className="space-y-2">
-                  {Object.entries(result.enriched_data).map(([k, v]) => (
-                    <div key={k} className="flex gap-2">
-                      <span className="text-xs" style={{ color: 'var(--text-tertiary)', minWidth: 80, textTransform: 'capitalize' }}>{k.replace('_', ' ')}</span>
-                      <span className="badge badge-blue">{String(v)}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="apple-card">
-                <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Routing Decision</p>
-                <div className="flex items-center gap-3 mb-3">
-                  <div className={`badge badge-${result.routing.priority === 'high' ? 'red' : 'orange'}`} style={{ fontSize: 13, padding: '4px 12px' }}>
-                    {result.routing.priority.toUpperCase()}
-                  </div>
-                  <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{result.routing.team}</span>
-                </div>
-                <div className="p-3 rounded-lg bg-[var(--bg-tertiary)] border border-[var(--border-secondary)]">
-                  <p className="text-xs font-bold uppercase mb-1" style={{ color: 'var(--text-tertiary)' }}>Next Action</p>
-                  <p className="text-xs" style={{ color: 'var(--text-secondary)', lineHeight: 1.4 }}>{result.routing.recommended_action}</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Buying Signals */}
-            <div className="apple-card">
-              <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>Buying Signals Detected</p>
-              <div className="space-y-2">
-                {result.signals.map((s, i) => (
-                  <div key={i} className="flex items-center gap-2">
-                    <div className="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: '#34c75920' }}>
-                      <Check size={10} color="#34c759" />
-                    </div>
-                    <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{s}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="divider" />
-              <Link href={`/email?prefill=${encodeURIComponent(result.email)}`}>
-                <button className="btn-secondary w-full">
-                  <ArrowRight size={14} />
-                  Notify Email Agent
-                </button>
-              </Link>
-            </div>
-          </div>
-        )}
-      />
-    </div>
+          )}
+        />
+      </div>
     </>
   );
 }
