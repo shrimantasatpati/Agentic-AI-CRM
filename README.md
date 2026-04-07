@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🤖 AI CRM
+# 🤖 Synaptic CRM - Complete Agentic AI CRM Solution
 
 ### Production-Grade CRM Powered by Autonomous AI Agents
 
