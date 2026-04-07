@@ -84,6 +84,7 @@ class CustomerSuccessAgent(BaseAgent):
             from database.models import Customer
             customer = db.query(Customer).filter(Customer.id == customer_id).first()
             if customer:
+                # Health score is now dynamic, not stored in DB
                 customer.churn_risk = churn_risk.get("level", "low")
                 db.commit()
 
@@ -382,12 +383,11 @@ Return exactly:
                     age_days_since_join = (datetime.now() - customer.created_at).days if hasattr(customer, 'created_at') and customer.created_at else 0
                     return {
                         "id": customer.id,
-                        "name": customer.name,
+                        "name": customer.company.name if customer.company else "Unknown Customer",
                         "email": getattr(customer, "email", ""),
-                        "industry": customer.industry,
-                        "total_spend": customer.total_spend or 0,
-                        "status": customer.status,
-                        "health_score": customer.health_score or 50,
+                        "industry": customer.company.industry if customer.company else "Unknown Industry",
+                        "total_spend": getattr(customer, "arr", 0), # Using ARR as total spend proxy
+                        "status": "active",
                         "churn_risk": customer.churn_risk or "low",
                         "plan": getattr(customer, "plan", "Unknown"),
                         "mrr": (customer.total_spend or 0) / max(1, age_days_since_join // 30),

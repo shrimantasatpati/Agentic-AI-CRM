@@ -83,7 +83,7 @@ class SalesPipelineAgent(BaseAgent):
             deal = db.query(Deal).filter(Deal.id == deal_id).first()
             if deal:
                 deal.is_stalled = is_stalled
-                # deal.close_probability = close_probability # If model has this field
+                # Health score is now dynamic, not stored in DB
                 db.commit()
 
         # Publish event for alerts

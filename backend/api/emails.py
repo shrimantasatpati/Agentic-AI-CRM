@@ -37,6 +37,18 @@ async def list_emails(
     return emails
 
 
+@router.delete("/")
+async def purge_emails(db: Session = Depends(get_db)):
+    """Delete all emails (clear inbox)"""
+    try:
+        db.query(Email).delete()
+        db.commit()
+        return {"status": "success", "message": "Inbox purged"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to clear inbox: {str(e)}")
+
+
 @router.delete("/{email_id}")
 async def delete_email(email_id: str, db: Session = Depends(get_db)):
     """Delete email"""
@@ -47,11 +59,3 @@ async def delete_email(email_id: str, db: Session = Depends(get_db)):
     db.delete(email)
     db.commit()
     return {"status": "deleted"}
-
-
-@router.delete("/")
-async def delete_all_emails(db: Session = Depends(get_db)):
-    """Delete all emails"""
-    db.query(Email).delete()
-    db.commit()
-    return {"status": "all_deleted"}

@@ -84,6 +84,7 @@ class Deal(Base):
     stage = Column(String(50), nullable=False)
     probability = Column(Integer, default=50)
 
+    # Health & Risk
     is_stalled = Column(Boolean, default=False)
     risk_factors = Column(JSON)
 
@@ -109,6 +110,7 @@ class Deal(Base):
 
     __table_args__ = (
         CheckConstraint('probability >= 0 AND probability <= 100', name='check_probability'),
+        # CheckConstraint('health_score >= 0 AND health_score <= 100', name='check_health_score'),
     )
 
 

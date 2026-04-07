@@ -229,7 +229,8 @@ async def seed_production_data(db: Session = Depends(get_db)):
                 name=f"Deal - {deal_names[i % len(deal_names)]}",
                 value=random.choice([25000, 50000, 75000, 120000, 250000]),
                 stage=random.choice(stages),
-                probability=50
+                probability=50,
+                health_score=random.randint(60, 95)
             )
             db.add(deal)
             deals.append(deal)
@@ -243,6 +244,7 @@ async def seed_production_data(db: Session = Depends(get_db)):
                 company_id=comp.id,
                 plan=random.choice(["Enterprise", "Growth"]),
                 mrr=random.choice([5000, 10000, 15000]),
+                health_score=random.randint(70, 99),
                 churn_risk="low"
             ))
 
