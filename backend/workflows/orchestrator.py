@@ -405,6 +405,7 @@ class AgentOrchestrator:
         monitoring_result = await self.success_agent.execute({
             "customer_id": customer_id,
             "action": "monitor",
+            "db": db,
         })
 
         from database.models import Customer

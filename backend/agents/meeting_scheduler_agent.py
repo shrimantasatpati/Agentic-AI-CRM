@@ -144,7 +144,7 @@ Return exactly:
         raw = await self.think(combined_prompt)
 
         try:
-            json_match = re.search(r'\{{.*\}}', raw, re.DOTALL)
+            json_match = re.search(r'\{.*\}', raw, re.DOTALL)
             parsed = json.loads(json_match.group() if json_match else raw)
         except Exception:
             parsed = {}

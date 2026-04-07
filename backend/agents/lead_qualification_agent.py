@@ -56,14 +56,14 @@ class LeadQualificationAgent(BaseAgent):
 
         # Step 2: Web enrichment via use_tool() — search for company context
         domain = lead_data.get("email", "").split("@")[-1] if "@" in lead_data.get("email", "") else ""
-        company_name = lead_data.get("company", lead_data.get("company_name", domain))
+        company_name = lead_data.get("company") or lead_data.get("company_name") or domain
         web_context = {}
         if company_name or domain:
             try:
                 web_context = await self.use_tool(
                     "web_search",
                     company=company_name or domain,
-                    query=f"{company_name or domain} company technology CRM"
+                    query=f"{company_name or domain} company industry CRM"
                 )
                 await self.log_activity("web_enrichment", {
                     "query": company_name or domain,

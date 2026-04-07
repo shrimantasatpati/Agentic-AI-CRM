@@ -80,6 +80,7 @@ export default function AnalyticsPage() {
 
   const handleRun = useCallback(async (formData: Record<string, string>) => {
     setError(null);
+    setResult(null);
     setIsComplete(false);
     try {
       const res = await fetch('http://localhost:8000/api/agents/generate-analytics/sync', {
@@ -89,53 +90,61 @@ export default function AnalyticsPage() {
       });
       if (res.ok) {
         const data = await res.json();
+        // Normalize insights — agent returns strings, frontend expects {priority,category,text}
+        const rawInsights = Array.isArray(data.insights) ? data.insights : [];
+        const normalizedInsights = rawInsights.length > 0
+          ? rawInsights.map((item: any, i: number) => typeof item === 'string'
+              ? { priority: i === 0 ? 'critical' : i <= 2 ? 'high' : 'medium', category: 'Analytics', text: item }
+              : item)
+          : MOCK_RESULT.insights;
+
+        // quick_insights — agent stores as 'insights' strings; backend may also send 'quick_insights'
+        const quickInsights = Array.isArray(data.quick_insights) && data.quick_insights.length > 0
+          ? data.quick_insights
+          : rawInsights.filter((x: any) => typeof x === 'string').slice(0, 5).map((s: string) => s) ||
+            MOCK_RESULT.quick_insights;
+
+        const kpis = data.kpis || {};
         const mapped: AnalyticsResult = {
           kpis: {
-            conversion_rate: data.kpis?.conversion_rate ?? MOCK_RESULT.kpis.conversion_rate,
-            avg_deal_size:   data.kpis?.avg_deal_size   ?? MOCK_RESULT.kpis.avg_deal_size,
-            win_rate:        data.kpis?.win_rate         ?? MOCK_RESULT.kpis.win_rate,
-            churn_rate:      data.kpis?.churn_rate       ?? MOCK_RESULT.kpis.churn_rate,
-            mrr:             data.kpis?.mrr              ?? MOCK_RESULT.kpis.mrr,
-            arr:             data.kpis?.arr              ?? MOCK_RESULT.kpis.arr,
+            conversion_rate: kpis.lead_conversion_rate ?? kpis.conversion_rate ?? MOCK_RESULT.kpis.conversion_rate,
+            avg_deal_size:   kpis.avg_deal_size ?? (kpis.total_revenue && kpis.won_deals ? kpis.total_revenue / kpis.won_deals : MOCK_RESULT.kpis.avg_deal_size),
+            win_rate:        kpis.win_rate        ?? MOCK_RESULT.kpis.win_rate,
+            churn_rate:      kpis.churn_rate      ?? MOCK_RESULT.kpis.churn_rate,
+            mrr:             kpis.mrr             ?? MOCK_RESULT.kpis.mrr,
+            arr:             kpis.arr             ?? (kpis.mrr ? kpis.mrr * 12 : MOCK_RESULT.kpis.arr),
           },
           trends: data.trends ?? MOCK_RESULT.trends,
-          insights: Array.isArray(data.insights) && data.insights.length > 0
-            ? data.insights
-            : MOCK_RESULT.insights,
-          alerts: Array.isArray(data.alerts) && data.alerts.length > 0
-            ? data.alerts
-            : MOCK_RESULT.alerts,
-          quick_insights: Array.isArray(data.quick_insights) && data.quick_insights.length > 0
-            ? data.quick_insights
-            : MOCK_RESULT.quick_insights,
+          insights: normalizedInsights,
+          alerts: Array.isArray(data.alerts) && data.alerts.length > 0 ? data.alerts : MOCK_RESULT.alerts,
+          quick_insights: quickInsights,
           recommendations: Array.isArray(data.recommendations) && data.recommendations.length > 0
-            ? data.recommendations
-            : null,
+            ? data.recommendations : null,
         };
         setResult(mapped);
         setIsComplete(true);
-        // Normalize execution steps — ensure they have durationMs so WorkflowSteps can animate
         const rawSteps = data.execution_steps;
         if (Array.isArray(rawSteps) && rawSteps.length > 0) {
           return rawSteps.map((s: any, i: number) => ({
             name: typeof s === 'string' ? STEPS[i]?.name || s : (s.name || STEPS[i]?.name || `Step ${i+1}`),
             output: typeof s === 'string' ? s : (s.output || s.description || STEPS[i]?.output || ''),
-            durationMs: typeof s === 'object' && s.durationMs ? s.durationMs : 170,
+            durationMs: typeof s === 'object' && s.durationMs ? s.durationMs : 200,
           }));
         }
-        // Build generic steps with even timing if the backend returns nothing
-        return STEPS.map((s) => ({ name: s.name, output: s.output, durationMs: 170 }));
+        return STEPS.map((s) => ({ name: s.name, output: s.output, durationMs: 200 }));
       } else {
-        setError('Analytics agent returned an error — check backend logs.');
+        const errText = await res.text().catch(() => '');
+        setError(`Analytics agent error (${res.status}) — ${errText || 'check backend logs'}`);
         setIsComplete(true);
-        return STEPS.map((s) => ({ name: s.name, output: s.output, durationMs: 170 }));
+        return STEPS.map((s) => ({ name: s.name, output: s.output, durationMs: 200 }));
       }
-    } catch {
-      setError('Could not connect to backend. Start the server with: python backend/run.py');
+    } catch (e) {
+      setError(`Could not connect to backend — ensure python backend/run.py is running. (${String(e)})`);
       setIsComplete(true);
-      return STEPS.map((s) => ({ name: s.name, output: s.output, durationMs: 170 }));
+      return STEPS.map((s) => ({ name: s.name, output: s.output, durationMs: 200 }));
     }
   }, []);
+
 
   return (
     <AgentPageLayout

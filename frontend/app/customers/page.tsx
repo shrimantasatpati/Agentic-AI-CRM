@@ -110,7 +110,7 @@ export default function CustomersPage() {
         <div className="flex items-center gap-2">
           <Heart size={14} color={COLOR} />
           <h3 className="font-700 text-sm" style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
-            Select Customer from CRM {!customersLoading && <span className="ml-1 opacity-60 font-medium">({customers.length} found)</span>}
+            Customers {!customersLoading && <span className="ml-1 opacity-60 font-medium">({customers.length} found)</span>}
           </h3>
         </div>
       </div>

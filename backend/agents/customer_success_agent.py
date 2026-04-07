@@ -127,7 +127,7 @@ Return exactly:
         raw = await self.think(combined_prompt)
 
         try:
-            json_match = re.search(r'\{{.*\}}', raw, re.DOTALL)
+            json_match = re.search(r'\{.*\}', raw, re.DOTALL)
             parsed = json.loads(json_match.group() if json_match else raw)
         except Exception:
             parsed = {}
@@ -239,8 +239,11 @@ Return exactly:
 
         return {
             "login_frequency": customer_data.get('logins_per_week', 0),
+            "logins_per_week": customer_data.get('logins_per_week', 0),
             "feature_adoption_rate": customer_data.get('features_used', 0) / max(customer_data.get('total_features', 1), 1),
+            "feature_adoption_pct": round(customer_data.get('features_used', 0) / max(customer_data.get('total_features', 1), 1) * 100),
             "last_activity": customer_data.get('days_since_login', 0),
+            "last_login": f"{customer_data.get('days_since_login', 0)}d ago" if customer_data.get('days_since_login', 0) > 0 else "Today",
             "trend": customer_data.get('usage_trend', 'stable'),
             "engagement_score": customer_data.get('engagement_score', 50)
         }
@@ -380,35 +383,41 @@ Return exactly:
             from database.models import Customer
             customer = db.query(Customer).filter(Customer.id == customer_id).first()
             if customer:
-                    age_days_since_join = (datetime.now() - customer.created_at).days if hasattr(customer, 'created_at') and customer.created_at else 0
+                    days_since_login = 0
+                    if customer.last_login_at:
+                        days_since_login = (datetime.now() - customer.last_login_at).days
+                    days_to_renewal = 0
+                    if customer.contract_end_date:
+                        from datetime import date
+                        days_to_renewal = (customer.contract_end_date - date.today()).days
                     return {
                         "id": customer.id,
-                        "name": customer.company.name if customer.company else "Unknown Customer",
-                        "email": getattr(customer, "email", ""),
-                        "industry": customer.company.industry if customer.company else "Unknown Industry",
-                        "total_spend": getattr(customer, "arr", 0), # Using ARR as total spend proxy
+                        "name": customer.company.name if customer.company else f"Customer #{customer.id[:6]}",
+                        "email": customer.company.domain if customer.company else "",
+                        "industry": customer.company.industry if customer.company else "Unknown",
+                        "total_spend": customer.arr or customer.mrr * 12 or 0,
                         "status": "active",
                         "churn_risk": customer.churn_risk or "low",
-                        "plan": getattr(customer, "plan", "Unknown"),
-                        "mrr": (customer.total_spend or 0) / max(1, age_days_since_join // 30),
-                        "logins_per_week": getattr(customer, "logins_per_week", 0),
-                        "features_used": getattr(customer, "features_used", 0),
-                        "total_features": getattr(customer, "total_features", 10),
-                        "daily_active_users": getattr(customer, "daily_active_users", 0),
-                        "license_usage_percent": getattr(customer, "license_usage_percent", 0),
-                        "days_since_login": getattr(customer, "days_since_login", 0),
-                        "support_tickets_30d": getattr(customer, "support_tickets_30d", 0),
-                        "training_attended": getattr(customer, "training_attended", 0),
-                        "community_posts": getattr(customer, "community_posts", 0),
-                        "critical_tickets": getattr(customer, "critical_tickets", 0),
-                        "avg_resolution_hours": getattr(customer, "avg_resolution_hours", 0),
-                        "csat_score": getattr(customer, "csat_score", 0),
-                        "payment_delays": getattr(customer, "payment_delays", 0),
-                        "usage_trend": getattr(customer, "usage_trend", "unknown"),
-                        "engagement_score": getattr(customer, "engagement_score", 0),
-                        "days_to_renewal": getattr(customer, "days_to_renewal", 0),
-                        "team_size": getattr(customer, "team_size", 0),
-                        "user_growth_30d": getattr(customer, "user_growth_30d", 0),
+                        "plan": customer.plan or "Unknown",
+                        "mrr": customer.mrr or 0,
+                        "logins_per_week": customer.logins_per_week or 0,
+                        "features_used": customer.features_used or 0,
+                        "total_features": customer.total_features or 10,
+                        "daily_active_users": customer.daily_active_users or 0,
+                        "license_usage_percent": customer.license_usage_percent or 0,
+                        "days_since_login": days_since_login,
+                        "support_tickets_30d": customer.support_tickets_30d or 0,
+                        "training_attended": 0,
+                        "community_posts": 0,
+                        "critical_tickets": customer.critical_tickets_open or 0,
+                        "avg_resolution_hours": customer.avg_resolution_hours or 24,
+                        "csat_score": customer.csat_score or 0,
+                        "payment_delays": customer.payment_delays or 0,
+                        "usage_trend": "stable",
+                        "engagement_score": min(100, (customer.logins_per_week or 0) * 10),
+                        "days_to_renewal": days_to_renewal,
+                        "team_size": 0,
+                        "user_growth_30d": 0,
                     }
             return {"error": "Customer not found"}
 

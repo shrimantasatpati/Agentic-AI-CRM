@@ -113,7 +113,7 @@ export default function PipelinePage() {
         <div className="flex items-center gap-2">
           <DollarSign size={14} color={COLOR} />
           <h3 className="font-700 text-sm" style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
-            Select Active Deal
+            Deals
           </h3>
         </div>
         {!dealsLoading && (

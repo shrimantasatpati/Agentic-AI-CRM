@@ -127,7 +127,22 @@ def seed_all():
             )
             db.add(company)
             company_objs.append(company)
+
+        # ── Demo / Owner company ───────────────────────────────────────────────
+        personal_company = Company(
+            id=str(uuid.uuid4()),
+            name="Personal Contacts",
+            domain="gmail.com",
+            industry="Personal",
+            company_size="small",
+            revenue_range="N/A",
+            location="India",
+            timezone="Asia/Kolkata",
+        )
+        db.add(personal_company)
         db.flush()
+        company_objs.append(personal_company)
+
 
         # ── Contacts ──────────────────────────────────────────────────────────
         print("  → Seeding contacts...")
@@ -154,6 +169,27 @@ def seed_all():
             )
             db.add(contact)
             contact_objs.append(contact)
+        db.flush()
+
+        # ── Demo / Owner contacts ─────────────────────────────────────────────
+        for demo_email, fname, lname, title in [
+            ("satpatishrimanta@gmail.com", "Shrimanta", "Satpati", "CRM Owner"),
+            ("dataduo@gmail.com", "Data", "Duo", "AI Product Lead"),
+        ]:
+            demo_contact = Contact(
+                id=str(uuid.uuid4()),
+                company_id=personal_company.id,
+                email=demo_email,
+                first_name=fname,
+                last_name=lname,
+                job_title=title,
+                job_level="executive",
+                lead_status="qualified",
+                lead_source="Direct",
+                enrichment_data={"source": "demo", "crm_owner": True},
+            )
+            db.add(demo_contact)
+            contact_objs.append(demo_contact)
         db.flush()
 
         # ── Deals ─────────────────────────────────────────────────────────────

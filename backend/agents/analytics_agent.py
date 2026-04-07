@@ -59,20 +59,36 @@ class AnalyticsAgent(BaseAgent):
         """Generate real-time dashboard data"""
         await self.log_activity("generating_dashboard", {"category": category})
 
-        # Collect metrics
+        # Collect metrics from real DB
         metrics = await self._collect_metrics(category, db)
 
         # Calculate KPIs
         kpis = await self.calculate_kpis(metrics)
 
-        # Generate trends
-        trends = await self.analyze_trends(metrics)
-
-        # Get alerts
+        # Get alerts (rule-based — no LLM)
         alerts = await self.identify_alerts(metrics, kpis)
 
-        # OPTIMIZED: Single LLM call for detailed trends + recommendations
+        # SINGLE LLM call: trends + recommendations + insights together
         trends_analysis, recommendations = await self._generate_trends_and_recs(metrics, kpis)
+
+        # Build structured insights from LLM recommendations
+        quick_insights = []
+        for i, rec in enumerate(recommendations[:5]):
+            if isinstance(rec, dict):
+                quick_insights.append({
+                    "priority": rec.get("impact", "medium"),
+                    "category": rec.get("category", "Analytics"),
+                    "text": rec.get("action", "")
+                })
+            elif isinstance(rec, str):
+                quick_insights.append({
+                    "priority": "high" if i < 2 else "medium",
+                    "category": "Analytics",
+                    "text": rec
+                })
+
+        # Fallback rule-based insight strings for quick_insights bar
+        raw_quick = await self.generate_quick_insights(kpis, trends_analysis)
 
         dashboard = {
             "timestamp": datetime.utcnow().isoformat(),
@@ -81,7 +97,8 @@ class AnalyticsAgent(BaseAgent):
             "metrics": metrics,
             "trends": trends_analysis,
             "alerts": alerts,
-            "insights": await self.generate_quick_insights(kpis, trends_analysis),
+            "insights": quick_insights if quick_insights else raw_quick,
+            "quick_insights": raw_quick,
             "recommendations": recommendations,
             "execution_steps": [
                 "Collecting metrics from CRM database",
@@ -98,6 +115,7 @@ class AnalyticsAgent(BaseAgent):
         })
 
         return dashboard
+
 
     async def calculate_kpis(self, metrics: Dict[str, Any]) -> Dict[str, Any]:
         """Calculate key performance indicators"""
@@ -417,6 +435,7 @@ class AnalyticsAgent(BaseAgent):
         deals_won = db.query(Deal).filter(Deal.stage == 'won').count()
         
         # Real DB queries for customer health metrics
+        customers_total = db.query(Customer).count()
         avg_nps = db.query(func.avg(Customer.nps_score)).scalar() or 0
         avg_csat = db.query(func.avg(Customer.csat_score)).scalar() or 0
         customers_churned = db.query(Customer).filter(Customer.churn_risk == 'critical').count()
@@ -426,9 +445,12 @@ class AnalyticsAgent(BaseAgent):
         stage_data = {s: {'count': c, 'value': v or 0} for s, c, v in deal_stages}
         deals_won = stage_data.get('closed_won', {}).get('count', 0)
         won_revenue = stage_data.get('closed_won', {}).get('value', 0.0)
+        pipeline_value = sum(
+            stage_data.get(s, {}).get('value', 0)
+            for s in ['prospecting', 'qualification', 'proposal', 'negotiation']
+        )
 
         # Real avg sales cycle from stage_changed_at
-        from datetime import date as date_type
         avg_cycle_result = db.query(func.avg(
             func.julianday(Deal.actual_close_date) - func.julianday(Deal.stage_changed_at)
         )).filter(Deal.stage == 'closed_won', Deal.actual_close_date != None).scalar()  # noqa: E711
@@ -459,6 +481,7 @@ class AnalyticsAgent(BaseAgent):
             "churn_current": (customers_churned / max(customers_total, 1)) * 100,
             "churn_previous": 2.0
         }
+
 
 
     async def _get_historical_revenue(self, days: int) -> Dict[str, float]:

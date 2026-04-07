@@ -106,6 +106,7 @@ export default function EmailPage() {
   const [copied, setCopied] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [draftEdit, setDraftEdit] = useState<Record<string, string>>({});
 
   const autoAnalysisFiredRef = useRef(false); // Prevents infinite loop
 
@@ -131,14 +132,21 @@ export default function EmailPage() {
     if (isAnalyzing) return;
     setIsAnalyzing(true);
     try {
-        await fetch(`http://localhost:8000/api/emails/analyze-inbox?limit=10`, { method: 'POST' });
-        // Refresh once after analysis completes
-        await new Promise(r => setTimeout(r, 2000));
-        await loadEmails();
+      await fetch(`http://localhost:8000/api/emails/analyze-inbox?limit=10`, { method: 'POST' });
+      // Poll until all emails are analyzed (max 30s)
+      let polls = 0;
+      const poll = async () => {
+        const data = await loadEmails();
+        if (Array.isArray(data) && data.some((e: any) => !e.analyzed) && polls++ < 10) {
+          setTimeout(poll, 3000);
+        } else {
+          setIsAnalyzing(false);
+        }
+      };
+      setTimeout(poll, 2500);
     } catch (err) {
-        console.error('Auto-analysis failed:', err);
-    } finally {
-        setIsAnalyzing(false);
+      console.error('Auto-analysis failed:', err);
+      setIsAnalyzing(false);
     }
   }, [isAnalyzing, loadEmails]);
 
@@ -165,9 +173,26 @@ export default function EmailPage() {
   const selectedEmail = emails.find(e => e.id === selectedId);
 
   const copyDraft = () => {
-    if (selectedEmail?.draft_response) {
-      navigator.clipboard.writeText(selectedEmail.draft_response);
+    const draft = draftEdit[selectedId!] ?? selectedEmail?.draft_response ?? '';
+    if (draft) {
+      navigator.clipboard.writeText(draft);
       setCopied(true); setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const sendDraft = async () => {
+    if (!selectedEmail) return;
+    const body = draftEdit[selectedEmail.id] ?? selectedEmail.draft_response ?? '';
+    if (!body.trim()) return;
+    try {
+      await fetch('http://localhost:8000/api/emails/send-reply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: selectedEmail.from_email, subject: `Re: ${selectedEmail.subject}`, body }),
+      });
+      alert(`Reply sent to ${selectedEmail.from_email}`);
+    } catch {
+      alert('Failed to send — check Gmail connection.');
     }
   };
 
@@ -432,19 +457,22 @@ export default function EmailPage() {
                                             className="flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
                                             style={{ background: 'var(--bg-primary)', color: COLOR, border: `1px solid ${COLOR}30` }}>
                                             {copied ? <Check size={12} /> : null}
-                                            {copied ? 'Copied to clipboard' : 'Copy Draft'}
+                                            {copied ? 'Copied' : 'Copy'}
                                         </button>
-                                        <button onClick={() => deleteEmail(selectedEmail.id)}
-                                            className="flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors border border-red-500/30 text-red-500 hover:bg-red-500/10">
-                                            <Trash2 size={12} />
-                                            Delete
+                                        <button onClick={sendDraft}
+                                            className="flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-semibold"
+                                            style={{ background: COLOR, color: '#fff', border: 'none', cursor: 'pointer' }}>
+                                            ✉ Send Reply
                                         </button>
                                     </div>
                                 </div>
-                                <div className="p-4 bg-[var(--bg-primary)]">
-                                    <pre className="text-sm text-[var(--text-secondary)] whitespace-pre-wrap" style={{ fontFamily: 'inherit', lineHeight: 1.6 }}>
-                                        {selectedEmail.draft_response}
-                                    </pre>
+                                <div className="p-3 bg-[var(--bg-primary)]">
+                                    <textarea
+                                        className="w-full text-sm bg-transparent resize-y outline-none"
+                                        style={{ color: 'var(--text-secondary)', lineHeight: 1.6, minHeight: 140, fontFamily: 'inherit', border: 'none' }}
+                                        value={draftEdit[selectedEmail.id] ?? selectedEmail.draft_response}
+                                        onChange={e => setDraftEdit(prev => ({ ...prev, [selectedEmail.id]: e.target.value }))}
+                                    />
                                 </div>
                             </div>
                         )}
